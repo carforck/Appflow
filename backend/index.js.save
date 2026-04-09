@@ -1,0 +1,89 @@
+const express = require('express');
+const mysql = require('mysql2/promise');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+require('dotenv').config();
+
+const app = express();
+app.use(express.json());
+
+// --- 1. CONEXIÓN A DB (TÚNEL SSH) ---
+const pool = mysql.createPool({
+    host: '127.0.0.1',
+    port: 3307,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASS,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10
+});
+
+// Cambia el modelo a este ID específico:
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
+
+app.post('/procesar-reunion', async (req, res) => {
+    const { texto } = req.body;
+    if (!texto) return res.status(400).json({ error: "Falta el texto" });
+
+    try {
+        console.log("🤖 Consultando a Gemini...");
+// Cambia la línea actual por esta:
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+        const prompt = `Actúa como PM de Alzak Foundation. Analiza la reunión y extrae tareas.
+        JSON Requerido:
+        {
+          "id_proyecto": "Usa uno de los IDs reales (5024, 25923, 1111, etc)",
+          "resumen": "Breve y claro",
+          "tareas": [
+            {
+              "descripcion": "Qué hay que hacer",
+              "responsable": "Solo el nombre (Lina, Faiber, Carlos, etc)",
+              "prioridad": "Alta/Media/Baja",
+              "fecha": "YYYY-MM-DD"
+            }
+          ]
+        }
+        Texto: ${texto}`;
+
+        const result = await model.generateContent(prompt);
+        const dataIA = JSON.parse(result.response.text().replace(/```json|```/g, ""));
+
+        // --- 3. GUARDAR EN DB CON RELACIONES ---
+        console.log("💾 Guardando Reunión...");
+        
+        // A. Insertar la reunión
+        const [resMeeting] = await pool.query(
+            "INSERT INTO meetings (id_proyecto, resumen_ejecutivo, texto_original) VALUES (?, ?, ?)",
+            [dataIA.id_proyecto, dataIA.resumen, texto]
+        );
+        const meetingId = resMeeting.insertId;
+
+        // B. Procesar Tareas
+        console.log(`📌 Procesando ${dataIA.tareas.length} tareas...`);
+        for (const t of dataIA.tareas) {
+            // Buscamos el correo oficial en la tabla 'users' por el nombre que dio la IA
+            const [user] = await pool.query(
+                "SELECT correo, nombre_completo FROM users WHERE nombre_completo LIKE ?",
+                [`%${t.responsable}%`]
+            );
+
+            const correoFinal = user.length > 0 ? user[0].correo : null;
+            const nombreFinal = user.length > 0 ? user[0].nombre_completo : t.responsable;
+
+            await pool.query(
+                `INSERT INTO tasks 
+                (id_meeting, id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo, prioridad, fecha_entrega) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [meetingId, dataIA.id_proyecto, t.descripcion, nombreFinal, correoFinal, t.prioridad, t.fecha]
+            );
+        }
+
+        console.log("✅ ¡Todo en su lugar, mijo!");
+        res.json({ status: "success", meetingId, tareas: dataIA.tareas.length });
+
+    } catch (error) {
+        console.error("❌ Fallo crítico:", error);
+        res.status(500).json({ error: "Error interno", detalle: error.message });
+    }
+});
+
+app.listen(3000, () => console.log("🚀 Alzak Flow V3 Corriendo en Puerto 3000"));

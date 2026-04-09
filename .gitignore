@@ -1,0 +1,17 @@
+# Claude Code (puede contener credenciales en historial de permisos)
+.claude/
+
+# Dependencias
+node_modules/
+
+# Variables de entorno (credenciales)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store

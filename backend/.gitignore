@@ -1,0 +1,10 @@
+# Dependencias
+node_modules/
+
+# Variables de entorno (credenciales sensibles)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log

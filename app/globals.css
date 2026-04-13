@@ -2,14 +2,77 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
 :root {
-  --foreground-rgb: 15, 23, 42;
-  --background-start-rgb: 248, 250, 252;
-  --background-end-rgb: 255, 255, 255;
+  --background:  #f1f5f9;
+  --sidebar-bg:  rgba(255, 255, 255, 0.90);
+  --bottom-bar:  rgba(255, 255, 255, 0.94);
 }
 
+.dark {
+  --background:  #0f172a;
+  --sidebar-bg:  rgba(15, 23, 42, 0.94);
+  --bottom-bar:  rgba(15, 23, 42, 0.94);
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────────── */
 body {
-  color: rgb(var(--foreground-rgb));
-  background: white;
+  background: var(--background);
+  color: #0f172a;
   min-height: 100vh;
+  transition: background 0.2s ease;
+}
+
+.dark body {
+  color: #f1f5f9;
+}
+
+/* ── Glass morphism ────────────────────────────────────────────────────────── */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.dark .glass {
+  background: rgba(30, 41, 59, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ── Kanban scrollbar ──────────────────────────────────────────────────────── */
+.kanban-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.kanban-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+.kanban-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.kanban-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.dark .kanban-scroll::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+/* ── Notification panel entrance animation ─────────────────────────────────── */
+@keyframes notif-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+.notif-panel {
+  animation: notif-in 0.18s ease-out both;
+  transform-origin: top right;
+}
+
+/* ── Line-clamp utility (fallback) ────────────────────────────────────────── */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

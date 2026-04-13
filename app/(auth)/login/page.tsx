@@ -2,30 +2,54 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, UserRole } from '@/context/AuthContext';
 import ThemeToggle from '@/components/ThemeToggle';
+
+const BYPASS_ROLES: { role: UserRole; label: string; desc: string; color: string }[] = [
+  {
+    role: 'superadmin',
+    label: 'Superadmin',
+    desc: 'Carlos Carranza — acceso total + Logs',
+    color: 'border-violet-300 dark:border-violet-700/60 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40',
+  },
+  {
+    role: 'admin',
+    label: 'Admin / PM',
+    desc: 'Alejandra Puerto — Procesador + Board',
+    color: 'border-alzak-blue/30 dark:border-alzak-gold/30 bg-alzak-blue/5 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold hover:bg-alzak-blue/10 dark:hover:bg-alzak-gold/20',
+  },
+  {
+    role: 'user',
+    label: 'Investigador',
+    desc: 'Lina Salcedo — solo mis tareas',
+    color: 'border-slate-200 dark:border-slate-600/60 bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70',
+  },
+];
 
 export default function LoginPage() {
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [error,    setError]    = useState('');
   const [loading,  setLoading]  = useState(false);
-  const { login } = useAuth();
+  const { login, loginMock } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     const { ok, error: loginError } = await login(email, password);
-
     if (ok) {
       router.replace('/dashboard');
     } else {
       setError(loginError ?? 'Credenciales incorrectas');
       setLoading(false);
     }
+  };
+
+  const handleBypass = (role: UserRole) => {
+    loginMock(role);
+    router.replace('/dashboard');
   };
 
   return (
@@ -35,71 +59,104 @@ export default function LoginPage() {
     >
       {/* Fondos decorativos */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-48 -right-48 w-[500px] h-[500px] bg-alzak-blue/10 dark:bg-alzak-gold/5 rounded-full blur-3xl" />
-        <div className="absolute -bottom-48 -left-48 w-[500px] h-[500px] bg-alzak-gold/10 dark:bg-alzak-blue/8 rounded-full blur-3xl" />
+        <div className="absolute -top-48 -right-48 w-[500px] h-[500px] bg-alzak-blue/8 dark:bg-alzak-gold/5 rounded-full blur-3xl" />
+        <div className="absolute -bottom-48 -left-48 w-[500px] h-[500px] bg-alzak-gold/8 dark:bg-alzak-blue/5 rounded-full blur-3xl" />
       </div>
 
       <div className="absolute top-6 right-6 z-10">
         <ThemeToggle />
       </div>
 
-      <div className="relative w-full max-w-sm glass rounded-[24px] p-8 shadow-2xl">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-[20px] bg-alzak-blue dark:bg-alzak-gold flex items-center justify-center text-white dark:text-alzak-dark font-bold text-2xl shadow-lg">
-            AF
+      <div className="relative w-full max-w-sm space-y-4">
+        {/* ── Card principal ── */}
+        <div className="glass rounded-[24px] p-8 shadow-2xl">
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-[20px] bg-alzak-blue dark:bg-alzak-gold flex items-center justify-center text-white dark:text-alzak-dark font-bold text-2xl shadow-lg">
+              AF
+            </div>
+            <h1 className="text-2xl font-bold text-alzak-blue dark:text-white">Alzak Flow</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              Inicia sesión con tu cuenta institucional
+            </p>
           </div>
-          <h1 className="text-2xl font-bold text-alzak-blue dark:text-white">Alzak Flow</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Inicia sesión con tu cuenta institucional
-          </p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">
+                Correo institucional
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nombre@alzak.org"
+                required
+                className="w-full px-4 py-3 rounded-[14px] bg-white/50 dark:bg-slate-800/50 border border-white/60 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-alzak-blue dark:focus:ring-alzak-gold transition-all text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">
+                Contraseña
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="w-full px-4 py-3 rounded-[14px] bg-white/50 dark:bg-slate-800/50 border border-white/60 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-alzak-blue dark:focus:ring-alzak-gold transition-all text-sm"
+              />
+            </div>
+
+            {error && (
+              <div className="px-4 py-3 rounded-[12px] bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40">
+                <p className="text-sm text-red-600 dark:text-red-400 font-medium text-center">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 mt-2 rounded-[14px] bg-alzak-blue dark:bg-alzak-gold text-white dark:text-alzak-dark font-bold text-sm shadow-lg hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
+            >
+              {loading ? 'Verificando…' : 'Entrar'}
+            </button>
+          </form>
+
+          <p className="text-center text-xs text-slate-400 mt-6">© 2026 Alzak Foundation</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">
-              Correo institucional
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="nombre@alzak.org"
-              required
-              className="w-full px-4 py-3 rounded-[14px] bg-white/50 dark:bg-slate-800/50 border border-white/60 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-alzak-blue dark:focus:ring-alzak-gold transition-all text-sm"
-            />
+        {/* ── Dev Bypass Panel ── */}
+        <div className="glass rounded-[20px] p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+              Dev Bypass — Modo Prueba
+            </p>
           </div>
-
-          <div>
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">
-              Contraseña
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="w-full px-4 py-3 rounded-[14px] bg-white/50 dark:bg-slate-800/50 border border-white/60 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-alzak-blue dark:focus:ring-alzak-gold transition-all text-sm"
-            />
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-3 leading-relaxed">
+            Elige un rol para ingresar sin backend. Cada rol tiene vistas y permisos distintos.
+          </p>
+          <div className="space-y-2">
+            {BYPASS_ROLES.map(({ role, label, desc, color }) => (
+              <button
+                key={role}
+                onClick={() => handleBypass(role)}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-[12px] border text-left transition-all ${color}`}
+              >
+                <div>
+                  <p className="text-xs font-bold">{label}</p>
+                  <p className="text-[10px] opacity-70">{desc}</p>
+                </div>
+                <svg className="w-3.5 h-3.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            ))}
           </div>
-
-          {error && (
-            <div className="px-4 py-3 rounded-[12px] bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40">
-              <p className="text-sm text-red-600 dark:text-red-400 font-medium text-center">{error}</p>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3.5 mt-2 rounded-[14px] bg-alzak-blue dark:bg-alzak-gold text-white dark:text-alzak-dark font-bold text-sm shadow-lg hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
-          >
-            {loading ? 'Verificando...' : 'Entrar'}
-          </button>
-        </form>
-
-        <p className="text-center text-xs text-slate-400 mt-6">© 2026 Alzak Foundation</p>
+        </div>
       </div>
     </div>
   );

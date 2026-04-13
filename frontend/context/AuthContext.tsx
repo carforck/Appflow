@@ -13,6 +13,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  loginMock: (role: UserRole) => void;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -25,8 +26,15 @@ function backendBase() {
   return `http://${window.location.hostname}:3000`;
 }
 
+// Usuarios mock para el bypass de desarrollo
+const MOCK_USERS: Record<UserRole, User> = {
+  superadmin: { email: 'c.carranza@alzak.org', nombre: 'Carlos Carranza',  role: 'superadmin' },
+  admin:      { email: 'a.puerto@alzak.org',   nombre: 'Alejandra Puerto', role: 'admin'      },
+  user:       { email: 'l.salcedo@alzak.org',  nombre: 'Lina Salcedo',     role: 'user'       },
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser]       = useState<User | null>(null);
+  const [user,      setUser]      = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Restaurar sesión desde localStorage al montar
@@ -41,9 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
+  // Login real contra el backend
   const login = async (
     email: string,
-    password: string
+    password: string,
   ): Promise<{ ok: boolean; error?: string }> => {
     try {
       const res  = await fetch(`${backendBase()}/auth/login`, {
@@ -52,9 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body:    JSON.stringify({ email: email.trim().toLowerCase(), password }),
       });
       const data = await res.json();
-
       if (!res.ok) return { ok: false, error: data.error ?? 'Credenciales incorrectas' };
-
       setUser(data.user);
       localStorage.setItem('alzak_user',  JSON.stringify(data.user));
       localStorage.setItem('alzak_token', data.token);
@@ -62,6 +69,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       return { ok: false, error: 'No se pudo conectar con el servidor. ¿El backend está activo?' };
     }
+  };
+
+  // Bypass de desarrollo: inyecta un usuario mock sin llamar al backend
+  const loginMock = (role: UserRole) => {
+    const u = MOCK_USERS[role];
+    setUser(u);
+    localStorage.setItem('alzak_user',  JSON.stringify(u));
+    localStorage.setItem('alzak_token', `mock-token-${role}-${Date.now()}`);
   };
 
   const logout = () => {
@@ -72,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, login, logout, isAuthenticated: !!user, isLoading }}
+      value={{ user, login, loginMock, logout, isAuthenticated: !!user, isLoading }}
     >
       {children}
     </AuthContext.Provider>

@@ -1,4 +1,4 @@
-# Alzak Flow
+ # Alzak Flow
 
 Sistema de gestión de tareas de investigación clínica para **Alzak Foundation**, con procesamiento de minutas por IA (Groq / Llama 3.3), Kanban interactivo, flujo de aprobación en staging area y RBAC completo.
 

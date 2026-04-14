@@ -249,9 +249,10 @@ app.get('/tareas', authMiddleware, async (req, res) => {
 });
 
 // ── SERVER ───────────────────────────────────────────────────────────────────
-app.listen(3000, '0.0.0.0', () => {
+const PORT = process.env.PORT || 3005;
+app.listen(PORT, '0.0.0.0', () => {
   console.log('\n🚀 ALZAK FLOW OPERATIVO');
-  console.log('🔗 DB vía túnel SSH en 127.0.0.1:3307');
+  console.log(`🔗 DB en ${process.env.DB_HOST}:${process.env.DB_PORT}`);
   console.log('🔐 Auth JWT activo');
-  console.log('📡 Escuchando en 0.0.0.0:3000\n');
+  console.log(`📡 Escuchando en 0.0.0.0:${PORT}\n`);
 });

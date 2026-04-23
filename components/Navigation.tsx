@@ -1,13 +1,15 @@
 "use client";
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth, UserRole } from '@/context/AuthContext';
 import { useSidebar } from '@/context/SidebarContext';
 import { useNotifications } from '@/context/NotificationContext';
 import ThemeToggle from './ThemeToggle';
 import NotificationPanel from './NotificationPanel';
+import { useTaskStore } from '@/context/TaskStoreContext';
+import { useToast } from '@/components/Toast';
 
 // ── Iconos SVG inline ──────────────────────────────────────────────────────────
 const Icon = {
@@ -49,6 +51,11 @@ const Icon = {
   bell: (
     <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+    </svg>
+  ),
+  clipboard: (
+    <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7l2 2 4-4" />
     </svg>
   ),
   logout: (
@@ -100,13 +107,14 @@ const hasAccess = (userRole: UserRole, minRole?: UserRole) => {
 };
 
 const ALL_NAV_ITEMS: NavItem[] = [
-  { href: '/dashboard',  label: 'Dashboard',  icon: 'home'     },
-  { href: '/procesador', label: 'Procesador', icon: 'sparkles', minRole: 'admin' },
-  { href: '/tareas',     label: 'Tareas',     icon: 'tasks'    },
-  { href: '/proyectos',  label: 'Proyectos',  icon: 'projects', minRole: 'admin' },
-  { href: '/notas',      label: 'Notas',      icon: 'notes'    },
-  { href: '/usuarios',   label: 'Usuarios',   icon: 'users',    minRole: 'admin' },
-  { href: '/admin/logs', label: 'Logs',       icon: 'shield',   minRole: 'superadmin' },
+  { href: '/dashboard',  label: 'Dashboard',  icon: 'home'      },
+  { href: '/procesador', label: 'Procesador', icon: 'sparkles',  minRole: 'admin' },
+  { href: '/revision',   label: 'Revisión',   icon: 'clipboard', minRole: 'admin' },
+  { href: '/tareas',     label: 'Tareas',     icon: 'tasks'     },
+  { href: '/proyectos',  label: 'Proyectos',  icon: 'projects',  minRole: 'admin' },
+  { href: '/notas',      label: 'Notas',      icon: 'notes'     },
+  { href: '/usuarios',   label: 'Usuarios',   icon: 'users',     minRole: 'admin' },
+  { href: '/admin/logs', label: 'Logs',       icon: 'shield',    minRole: 'superadmin' },
 ];
 
 const ROLE_BADGE: Record<UserRole, string> = {
@@ -116,12 +124,41 @@ const ROLE_BADGE: Record<UserRole, string> = {
 };
 
 export default function Navigation() {
-  const pathname          = usePathname();
-  const router            = useRouter();
-  const { user, logout }  = useAuth();
+  const pathname            = usePathname();
+  const router              = useRouter();
+  const { user, logout }    = useAuth();
   const { collapsed, toggle, mobileOpen, toggleMobile, closeMobile } = useSidebar();
-  const { unreadCount }   = useNotifications();
+  const { unreadCount }     = useNotifications();
+  const { revisionCount, newIngestedFiles, clearNewIngestedFiles } = useTaskStore();
+  const { addToast }        = useToast();
   const [notifOpen, setNotifOpen] = useState(false);
+
+  // Toast de auditoría: nueva minuta de Drive procesada
+  useEffect(() => {
+    if (newIngestedFiles.length === 0) return;
+    newIngestedFiles.forEach((file) => {
+      addToast(`Nueva minuta de "${file}" lista para pre-aprobación`, 'info');
+    });
+    clearNewIngestedFiles();
+  }, [newIngestedFiles, addToast, clearNewIngestedFiles]);
+
+  // Toasts globales para eventos de cuenta (emitidos desde AuthContext via CustomEvent)
+  useEffect(() => {
+    const handleForceLogout = () => {
+      addToast('Tu cuenta ha sido desactivada. Sesión cerrada.', 'error');
+      setTimeout(() => router.push('/login'), 1500);
+    };
+    const handleRoleChanged = (e: Event) => {
+      const { role } = (e as CustomEvent<{ role: string }>).detail;
+      addToast(`Tu rol ha sido actualizado a "${role}". La sesión se actualizará.`, 'info');
+    };
+    window.addEventListener('alzak:force_logout',  handleForceLogout);
+    window.addEventListener('alzak:role_changed',  handleRoleChanged);
+    return () => {
+      window.removeEventListener('alzak:force_logout', handleForceLogout);
+      window.removeEventListener('alzak:role_changed', handleRoleChanged);
+    };
+  }, [addToast, router]);
 
   const navItems = user
     ? ALL_NAV_ITEMS.filter((item) => hasAccess(user.role, item.minRole))
@@ -143,26 +180,40 @@ export default function Navigation() {
     .toUpperCase() ?? 'U';
 
   // Nav list shared between desktop and mobile drawer
-  const NavList = ({ onItemClick }: { onItemClick?: () => void }) => (
+  const NavList = ({ onItemClick, forceExpanded }: { onItemClick?: () => void; forceExpanded?: boolean }) => (
     <nav className="flex-1 space-y-0.5">
       {navItems.map((item) => {
         const active = isActive(item.href);
+        const showLabel = forceExpanded || !collapsed;
+        const badge = item.href === '/revision' && revisionCount > 0 ? revisionCount : null;
         return (
           <Link
             key={item.href}
             href={item.href}
             onClick={onItemClick}
-            title={collapsed ? item.label : undefined}
+            title={collapsed && !forceExpanded ? item.label : undefined}
             className={`flex items-center gap-3 rounded-[12px] text-sm font-medium transition-all duration-150 ${
-              collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
+              collapsed && !forceExpanded ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
             } ${
               active
                 ? 'bg-alzak-blue text-white dark:bg-alzak-gold dark:text-alzak-dark shadow-sm'
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
-            {Icon[item.icon]}
-            {!collapsed && <span className="truncate">{item.label}</span>}
+            <span className="relative shrink-0">
+              {Icon[item.icon]}
+              {badge && collapsed && !forceExpanded && (
+                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 bg-violet-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center leading-none">
+                  {badge > 9 ? '9+' : badge}
+                </span>
+              )}
+            </span>
+            {showLabel && <span className="truncate flex-1">{item.label}</span>}
+            {showLabel && badge && (
+              <span className="ml-auto min-w-[20px] h-5 px-1 bg-violet-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {badge > 99 ? '99+' : badge}
+              </span>
+            )}
           </Link>
         );
       })}
@@ -386,26 +437,9 @@ export default function Navigation() {
         <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-600 px-2 mb-2">Menú</p>
 
         {/* Nav items en drawer (sin collapsed) */}
-        <nav className="flex-1 space-y-0.5 overflow-y-auto kanban-scroll">
-          {navItems.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={closeMobile}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-[12px] text-sm font-medium transition-all duration-150 ${
-                  active
-                    ? 'bg-alzak-blue text-white dark:bg-alzak-gold dark:text-alzak-dark shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70'
-                }`}
-              >
-                {Icon[item.icon]}
-                <span className="truncate">{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+        <div className="flex-1 overflow-y-auto kanban-scroll">
+          <NavList onItemClick={closeMobile} forceExpanded />
+        </div>
 
         {/* Footer drawer */}
         <div className="pt-4 border-t border-slate-200 dark:border-slate-700/50 space-y-2">

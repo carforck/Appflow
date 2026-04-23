@@ -6,7 +6,7 @@ import {
   PieLabelRenderProps,
 } from 'recharts';
 import { TaskWithMeta } from '@/context/TaskStoreContext';
-import { MOCK_PROJECTS } from '@/lib/mockData';
+import { useProjectStore } from '@/context/ProjectStoreContext';
 
 // ── Colores ────────────────────────────────────────────────────────────────────
 const COLOR_PENDIENTE  = '#94a3b8';
@@ -41,14 +41,15 @@ interface BarChartProps {
 }
 
 export function ProgresoBarChart({ tasks }: BarChartProps) {
-  const data = Object.entries(MOCK_PROJECTS)
-    .filter(([id]) => id !== '1111')
-    .map(([id, nombre]) => {
-      const proyTasks = tasks.filter((t) => t.id_proyecto === id);
+  const { projects } = useProjectStore();
+  const data = projects
+    .filter((p) => p.id_proyecto !== '1111')
+    .map((p) => {
+      const proyTasks = tasks.filter((t) => t.id_proyecto === p.id_proyecto);
       if (proyTasks.length === 0) return null;
       return {
-        proyecto: id,
-        nombre: nombre.split('—')[0].trim(),
+        proyecto:      p.id_proyecto,
+        nombre:        p.nombre_proyecto.split('—')[0].trim(),
         'Por Hacer':   proyTasks.filter((t) => t.status === 'Pendiente').length,
         'En Progreso': proyTasks.filter((t) => t.status === 'En Proceso').length,
         'Hecho':       proyTasks.filter((t) => t.status === 'Completada').length,

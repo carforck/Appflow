@@ -9,19 +9,20 @@ import {
   type ProjectFormData,
 } from '@/schemas/proyecto';
 
-const STATUSES: ProjectStatus[] = ['activo', 'inactivo', 'completado'];
+const STATUSES: ProjectStatus[] = ['Activo', 'Cerrado'];
 
 interface ProjectFormProps {
   form:        ProjectFormData;
   fieldErrors: Record<string, string>;
   isEditing:   boolean;
+  isLoading?:  boolean;
   onPatch:     (patch: Partial<ProjectFormData>) => void;
   onSubmit:    (e: React.FormEvent) => void;
   onCancel:    () => void;
 }
 
 export function ProjectForm({
-  form, fieldErrors, isEditing, onPatch, onSubmit, onCancel,
+  form, fieldErrors, isEditing, isLoading = false, onPatch, onSubmit, onCancel,
 }: ProjectFormProps) {
   return (
     <form onSubmit={onSubmit} noValidate className="px-6 py-5 space-y-4">
@@ -38,11 +39,11 @@ export function ProjectForm({
 
       <Input
         label="Nombre"
-        id="nombre"
-        value={form.nombre}
-        onChange={(e) => onPatch({ nombre: e.target.value })}
+        id="nombre_proyecto"
+        value={form.nombre_proyecto}
+        onChange={(e) => onPatch({ nombre_proyecto: e.target.value })}
         placeholder="Nombre descriptivo del proyecto"
-        error={fieldErrors.nombre}
+        error={fieldErrors.nombre_proyecto}
         required
       />
 
@@ -62,10 +63,10 @@ export function ProjectForm({
             <button
               key={s}
               type="button"
-              onClick={() => onPatch({ status: s })}
+              onClick={() => onPatch({ estado: s })}
               className={[
                 'flex-1 py-2 rounded-xl text-xs font-bold transition-all border-2',
-                form.status === s
+                form.estado === s
                   ? `${STATUS_COLOR[s]} border-transparent ring-2 ring-offset-1 ring-alzak-blue/20`
                   : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:border-slate-300',
               ].join(' ')}
@@ -81,8 +82,16 @@ export function ProjectForm({
         <Button type="button" variant="secondary" onClick={onCancel} className="flex-1 py-2">
           Cancelar
         </Button>
-        <Button type="submit" variant="primary" className="flex-1 py-2">
-          {isEditing ? 'Guardar cambios' : 'Crear proyecto'}
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={isLoading}
+          className="flex-1 py-2 flex items-center justify-center gap-2"
+        >
+          {isLoading && (
+            <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          )}
+          {isLoading ? 'Guardando…' : isEditing ? 'Guardar cambios' : 'Crear proyecto'}
         </Button>
       </div>
     </form>

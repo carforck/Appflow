@@ -9,6 +9,7 @@ import { NotificationProvider } from '@/context/NotificationContext';
 import { ProjectStoreProvider } from '@/context/ProjectStoreContext';
 import { ToastProvider } from '@/components/Toast';
 import { StagingProvider } from '@/context/StagingContext';
+import { UserStoreProvider } from '@/context/UserStoreContext';
 import Navigation from '@/components/Navigation';
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
@@ -49,13 +50,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <NotificationProvider>
       <ProjectStoreProvider>
         <TaskStoreProvider>
-          <StagingProvider>
-            <SidebarProvider>
-              <ToastProvider>
-                <DashboardContent>{children}</DashboardContent>
-              </ToastProvider>
-            </SidebarProvider>
-          </StagingProvider>
+          <UserStoreProvider>
+            <StagingProvider>
+              <SidebarProvider>
+                <ToastProvider>
+                  <DashboardContent>{children}</DashboardContent>
+                </ToastProvider>
+              </SidebarProvider>
+            </StagingProvider>
+          </UserStoreProvider>
         </TaskStoreProvider>
       </ProjectStoreProvider>
     </NotificationProvider>

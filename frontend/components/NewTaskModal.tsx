@@ -5,8 +5,8 @@ import { useTaskStore, NewTaskData } from '@/context/TaskStoreContext';
 import { useProjectStore } from '@/context/ProjectStoreContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useToast } from '@/components/Toast';
-import { MOCK_USERS } from '@/lib/mockData';
-import type { TareaPrioridad } from '@/lib/mockData';
+import type { TareaPrioridad, MockUser } from '@/lib/mockData';
+import { useUsuarios } from '@/hooks/useUsuarios';
 
 interface Props {
   onClose: () => void;
@@ -34,14 +34,16 @@ export default function NewTaskModal({ onClose }: Props) {
   const [fechaInicio,  setFechaInicio]  = useState(today());
   const [fechaEntrega, setFechaEntrega] = useState('');
   const [userSearch,   setUserSearch]   = useState('');
-  const [selectedUser, setSelectedUser] = useState<typeof MOCK_USERS[0] | null>(null);
+  const { users } = useUsuarios();
+  const [selectedUser, setSelectedUser] = useState<MockUser | null>(null);
   const [errors,       setErrors]       = useState<Record<string, string>>({});
+  const [submitting,   setSubmitting]   = useState(false);
 
   // User search dropdown
   const [showDropdown, setShowDropdown] = useState(false);
   const userInputRef = useRef<HTMLInputElement>(null);
 
-  const filteredUsers = MOCK_USERS.filter(
+  const filteredUsers = users.filter(
     (u) =>
       u.activo &&
       (u.nombre_completo.toLowerCase().includes(userSearch.toLowerCase()) ||
@@ -72,13 +74,19 @@ export default function NewTaskModal({ onClose }: Props) {
     return Object.keys(e).length === 0;
   }
 
+  function clearError(field: string) {
+    if (errors[field]) setErrors((prev) => { const next = { ...prev }; delete next[field]; return next; });
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validate() || !selectedUser || !selectedProject) return;
 
+    setSubmitting(true);
+
     const data: NewTaskData = {
       id_proyecto:        proyectoId,
-      nombre_proyecto:    selectedProject.nombre,
+      nombre_proyecto:    selectedProject.nombre_proyecto,
       tarea_descripcion:  descripcion.trim(),
       responsable_nombre: selectedUser.nombre_completo,
       responsable_correo: selectedUser.correo,
@@ -128,7 +136,7 @@ export default function NewTaskModal({ onClose }: Props) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto kanban-scroll px-6 py-4 space-y-4 flex-1">
+        <form id="new-task-form" onSubmit={handleSubmit} className="overflow-y-auto kanban-scroll px-6 py-4 space-y-4 flex-1">
 
           {/* Proyecto */}
           <div>
@@ -137,15 +145,15 @@ export default function NewTaskModal({ onClose }: Props) {
             </label>
             <select
               value={proyectoId}
-              onChange={(e) => setProyectoId(e.target.value)}
+              onChange={(e) => { setProyectoId(e.target.value); clearError('proyecto'); }}
               className="w-full text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-alzak-blue/40"
             >
               <option value="">— Seleccionar proyecto —</option>
               {projects
-                .filter((p) => p.status === 'activo')
+                .filter((p) => p.estado === 'Activo')
                 .map((p) => (
                   <option key={p.id_proyecto} value={p.id_proyecto}>
-                    [{p.id_proyecto}] {p.nombre}
+                    [{p.id_proyecto}] {p.nombre_proyecto}
                   </option>
                 ))}
             </select>
@@ -159,7 +167,7 @@ export default function NewTaskModal({ onClose }: Props) {
             </label>
             <textarea
               value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
+              onChange={(e) => { setDescripcion(e.target.value); clearError('descripcion'); }}
               rows={3}
               placeholder="Describe la tarea con detalle..."
               className="w-full text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-alzak-blue/40 resize-none"
@@ -189,7 +197,7 @@ export default function NewTaskModal({ onClose }: Props) {
                   ref={userInputRef}
                   type="text"
                   value={userSearch}
-                  onChange={(e) => { setUserSearch(e.target.value); setShowDropdown(true); }}
+                  onChange={(e) => { setUserSearch(e.target.value); setShowDropdown(true); clearError('responsable'); }}
                   onFocus={() => setShowDropdown(true)}
                   placeholder="Buscar por nombre o correo..."
                   className="w-full text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-alzak-blue/40"
@@ -259,7 +267,7 @@ export default function NewTaskModal({ onClose }: Props) {
                 type="date"
                 value={fechaEntrega}
                 min={fechaInicio}
-                onChange={(e) => setFechaEntrega(e.target.value)}
+                onChange={(e) => { setFechaEntrega(e.target.value); clearError('fecha'); }}
                 className="w-full text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-alzak-blue/40"
               />
               {errors.fecha && <p className="text-[10px] text-red-500 mt-1">{errors.fecha}</p>}
@@ -278,11 +286,14 @@ export default function NewTaskModal({ onClose }: Props) {
           </button>
           <button
             type="submit"
-            form=""
-            onClick={(e) => { e.preventDefault(); const fakeEvent = { preventDefault: () => {} } as React.FormEvent; handleSubmit(fakeEvent); }}
-            className="flex-1 py-2 rounded-xl text-sm font-bold bg-alzak-blue text-white hover:bg-alzak-blue/90 transition-colors shadow-md"
+            form="new-task-form"
+            disabled={submitting}
+            className="flex-1 py-2 rounded-xl text-sm font-bold bg-alzak-blue text-white hover:bg-alzak-blue/90 transition-colors shadow-md disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Crear tarea
+            {submitting && (
+              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            )}
+            {submitting ? 'Guardando…' : 'Crear tarea'}
           </button>
         </div>
       </div>

@@ -5,18 +5,16 @@ interface StatItem {
 }
 
 interface ProjectStatsProps {
-  total:      number;
-  activo:     number;
-  completado: number;
-  inactivo:   number;
+  total:   number;
+  activo:  number;
+  cerrado: number;
 }
 
-export function ProjectStats({ total, activo, completado, inactivo }: ProjectStatsProps) {
+export function ProjectStats({ total, activo, cerrado }: ProjectStatsProps) {
   const stats: StatItem[] = [
-    { label: 'Total',       value: total,      color: 'text-slate-700 dark:text-slate-200' },
-    { label: 'Activos',     value: activo,     color: 'text-emerald-600 dark:text-emerald-400' },
-    { label: 'Completados', value: completado, color: 'text-blue-600 dark:text-blue-400' },
-    { label: 'Inactivos',   value: inactivo,   color: 'text-slate-400' },
+    { label: 'Total',    value: total,   color: 'text-slate-700 dark:text-slate-200' },
+    { label: 'Activos',  value: activo,  color: 'text-emerald-600 dark:text-emerald-400' },
+    { label: 'Cerrados', value: cerrado, color: 'text-slate-400' },
   ];
 
   return (

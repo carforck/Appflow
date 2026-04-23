@@ -12,10 +12,9 @@ interface ProjectFiltersProps {
 }
 
 const FILTERS: { value: StatusFilterValue; label: string }[] = [
-  { value: 'all',        label: 'Todos' },
-  { value: 'activo',     label: STATUS_LABEL.activo },
-  { value: 'completado', label: STATUS_LABEL.completado },
-  { value: 'inactivo',   label: STATUS_LABEL.inactivo },
+  { value: 'all',     label: 'Todos' },
+  { value: 'Activo',  label: STATUS_LABEL.Activo },
+  { value: 'Cerrado', label: STATUS_LABEL.Cerrado },
 ];
 
 export function ProjectFilters({

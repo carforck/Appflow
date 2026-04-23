@@ -28,9 +28,10 @@ export default function ProyectosPage() {
     search, setSearch,
     statusFilter, setStatusFilter,
     modalOpen, editingId,
-    form, fieldErrors,
+    form, fieldErrors, isSaving,
     patchForm,
     openCreate, openEdit, closeModal, handleSave,
+    handleDelete, deletingId,
   } = proyectos;
 
   return (
@@ -69,11 +70,21 @@ export default function ProyectosPage() {
         <>
           <div className="sm:hidden space-y-2">
             {filtered.map((p) => (
-              <ProjectCard key={p.id_proyecto} project={p} onEdit={openEdit} />
+              <ProjectCard
+                key={p.id_proyecto} project={p}
+                onEdit={openEdit}
+                onDelete={handleDelete}
+                isDeleting={deletingId === p.id_proyecto}
+              />
             ))}
           </div>
           <div className="hidden sm:block">
-            <ProjectTable projects={filtered} onEdit={openEdit} />
+            <ProjectTable
+              projects={filtered}
+              onEdit={openEdit}
+              onDelete={handleDelete}
+              deletingId={deletingId}
+            />
           </div>
         </>
       )}
@@ -88,6 +99,7 @@ export default function ProyectosPage() {
           form={form}
           fieldErrors={fieldErrors}
           isEditing={!!editingId}
+          isLoading={isSaving}
           onPatch={patchForm}
           onSubmit={handleSave}
           onCancel={closeModal}

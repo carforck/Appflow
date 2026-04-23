@@ -1,9 +1,51 @@
 services:
-  api:
-    build: .
-    container_name: alzak_flow_api
-    ports:
-      - "3005:3005"
+
+  # ── Túnel SSH hacia DigitalOcean ─────────────────────────────────────────
+  # Expone MySQL del servidor remoto como db-tunnel:3306 en la red interna.
+  db-tunnel:
+    build:
+      context: .
+      dockerfile: Dockerfile.tunnel
+    container_name: alzak_tunnel
     env_file:
       - .env
+    volumes:
+      - ~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+    ports:
+      - "127.0.0.1:3306:3306"
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 ${SSH_LOCAL_DB_PORT:-3306}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  # ── API Alzak Flow ────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: alzak_flow_api
+    network_mode: host
+    env_file:
+      - .env
+    volumes:
+      - /run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf:ro
+    restart: always
+    depends_on:
+      db-tunnel:
+        condition: service_healthy
+
+  # ── Frontend Next.js ──────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      network: host
+    container_name: alzak_frontend
+    ports:
+      - "3001:3001"
+    restart: always
+    depends_on:
+      - api

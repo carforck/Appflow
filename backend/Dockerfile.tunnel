@@ -1,0 +1,11 @@
+FROM alpine:3.19
+
+# openssh-client: ssh + ssh-keyscan
+# autossh: reconexión automática del túnel
+# netcat-openbsd: nc para el healthcheck
+RUN apk add --no-cache openssh-client autossh netcat-openbsd
+
+COPY tunnel-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

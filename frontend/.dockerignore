@@ -1,0 +1,4 @@
+.next
+.git
+*.md
+.env*.local

@@ -1,6 +1,6 @@
- # Alzak Flow
+# Alzak Flow
 
-Sistema de gestión de tareas de investigación clínica para **Alzak Foundation**, con procesamiento de minutas por IA (Groq / Llama 3.3), Kanban interactivo, flujo de aprobación en staging area y RBAC completo.
+Sistema de gestión de investigación clínica para **Alzak Foundation**. Automatiza la extracción de tareas desde minutas de reunión con IA, gestión Kanban, flujo de revisión y aprobación, y comunicación interna bidireccional en **tiempo real** vía Socket.io.
 
 ---
 
@@ -10,86 +10,88 @@ Sistema de gestión de tareas de investigación clínica para **Alzak Foundation
 2. [Arquitectura del sistema](#2-arquitectura-del-sistema)
 3. [Stack tecnológico](#3-stack-tecnológico)
 4. [Estructura de carpetas](#4-estructura-de-carpetas)
-5. [Backend — API REST](#5-backend--api-rest)
-6. [Frontend — Páginas y módulos](#6-frontend--páginas-y-módulos)
-7. [Contextos React (estado global)](#7-contextos-react-estado-global)
-8. [Componentes reutilizables](#8-componentes-reutilizables)
-9. [Sistema de roles RBAC](#9-sistema-de-roles-rbac)
-10. [Flujo de procesamiento de minutas](#10-flujo-de-procesamiento-de-minutas)
-11. [Configuración y variables de entorno](#11-configuración-y-variables-de-entorno)
-12. [Instalación y ejecución](#12-instalación-y-ejecución)
-13. [Acceso remoto y puertos](#13-acceso-remoto-y-puertos)
-14. [Dev Bypass — credenciales de prueba](#14-dev-bypass--credenciales-de-prueba)
-15. [Base de datos](#15-base-de-datos)
-16. [Historial de versiones / fases](#16-historial-de-versiones--fases)
+5. [Backend — API REST completa](#5-backend--api-rest-completa)
+6. [Socket.io — Tiempo real](#6-socketio--tiempo-real)
+7. [Frontend — Páginas y módulos](#7-frontend--páginas-y-módulos)
+8. [Hooks personalizados](#8-hooks-personalizados)
+9. [Contextos React (estado global)](#9-contextos-react-estado-global)
+10. [Sistema de roles RBAC](#10-sistema-de-roles-rbac)
+11. [Flujo de procesamiento de minutas](#11-flujo-de-procesamiento-de-minutas)
+12. [Docker — Despliegue](#12-docker--despliegue)
+13. [Variables de entorno](#13-variables-de-entorno)
+14. [Base de datos](#14-base-de-datos)
+15. [Dev Bypass — credenciales de prueba](#15-dev-bypass--credenciales-de-prueba)
+16. [Historial de versiones](#16-historial-de-versiones)
 
 ---
 
 ## 1. Descripción general
 
-**Alzak Flow** automatiza la extracción y asignación de tareas a partir de minutas de reunión de estudios clínicos. El flujo es:
+**Alzak Flow** centraliza la operación de estudios clínicos en una sola plataforma:
 
 ```
-Minuta (texto libre)
-       │
-       ▼
-  IA (Groq/Llama 3.3)
-       │  extrae tareas estructuradas
-       ▼
-  Staging Area (validación Admin)
-       │  editar · aprobar · descartar
-       ▼
-  Kanban Board  ──►  Notificación al responsable
-       │
-       ▼
-  Historial de actividad
+Minuta de reunión (texto libre / DOCX / PDF)
+        │
+        ▼
+  IA (Google Gemini / Groq Llama 3.3)
+        │  extrae tareas estructuradas
+        ▼
+  Staging Area — Revisión admin
+        │  editar · aprobar · descartar
+        ▼
+  Cola de Revisión  ──►  Kanban Board
+        │                    │
+        ▼                    ▼
+  Notificación email    Notas de seguimiento
+  al responsable        (chat en tiempo real)
+        │
+        ▼
+  Historial / Lista Maestra exportable
 ```
 
-El sistema es **mock-first** en frontend (no requiere backend para desarrollo de UI) y se conecta al backend real cuando está disponible el túnel SSH a MySQL.
+Características principales:
+- **RBAC** completo (`superadmin > admin > user`)
+- **Chat de notas** por tarea con mensajería bidireccional en tiempo real
+- **Socket.io** para sincronización del tablero, alertas sonoras y typing indicators
+- **Auto-migración de DB** al arrancar (sin migraciones manuales)
+- **Dockerizado** con túnel SSH a MySQL en DigitalOcean
 
 ---
 
 ## 2. Arquitectura del sistema
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  CLIENTE (Navegador)                                            │
-│                                                                 │
-│   Next.js 14 App Router  ·  React 18  ·  TypeScript             │
-│   Tailwind CSS  ·  next-themes  ·  Recharts                     │
-│   Puerto 3001  ·  0.0.0.0  (acceso LAN)                         │
-└────────────────────────┬────────────────────────────────────────┘
-                         │ HTTP / fetch (authFetch)
-                         │ Authorization: Bearer <JWT>
-┌────────────────────────▼────────────────────────────────────────┐
-│  BACKEND  (Express.js)                                          │
-│                                                                 │
-│   Node.js  ·  Express  ·  JWT (8h)  ·  bcryptjs                 │
-│   Puerto 3000  ·  0.0.0.0                                       │
-│                                                                 │
-│   POST  /auth/login                                             │
-│   GET   /users                                                  │
-│   POST  /procesar-reunion   ──►  Groq API (Llama 3.3)           │
-│   GET   /tareas                                                 │
-└────────────────────────┬────────────────────────────────────────┘
-                         │ mysql2  ·  pool (10 conexiones)
-                         │ 127.0.0.1:3307 (túnel SSH)
-┌────────────────────────▼────────────────────────────────────────┐
-│  BASE DE DATOS  (MySQL)                                         │
-│                                                                 │
-│   Servidor remoto  ·  Acceso vía túnel SSH en puerto local 3307 │
-│   Tablas: users · meetings · tasks                              │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  CLIENTE (Navegador)                                             │
+│                                                                  │
+│   Next.js 14 (App Router) · React 18 · TypeScript               │
+│   Tailwind CSS · socket.io-client · Recharts                     │
+│   Puerto 3001                                                    │
+└──────────────┬──────────────────────┬───────────────────────────┘
+               │ HTTP / authFetch      │ WebSocket (Socket.io)
+               │ Bearer JWT            │ JWT auth por handshake
+┌──────────────▼──────────────────────▼───────────────────────────┐
+│  BACKEND  (Express.js + Socket.io)                               │
+│                                                                  │
+│   Node.js 22 · Express 4 · Socket.io 4                          │
+│   JWT (8h) · bcryptjs · multer · nodemailer                      │
+│   Puerto 3005 · network_mode: host                               │
+│                                                                  │
+│   Rooms Socket.io:                                               │
+│     alzak_global  → todos los usuarios autenticados              │
+│     user_{email}  → room privado por usuario                     │
+│     task_{id}     → chat de notas por tarea                      │
+└──────────────┬───────────────────────────────────────────────────┘
+               │ mysql2 · pool 10 conexiones
+               │ localhost:3306 (vía túnel SSH)
+┌──────────────▼───────────────────────────────────────────────────┐
+│  BASE DE DATOS  (MySQL — DigitalOcean)                           │
+│                                                                  │
+│   Acceso mediante contenedor Docker de túnel SSH                 │
+│   Tablas: users · projects · meetings · tasks ·                  │
+│           db_notifications · task_notas · pending_emails         │
+└──────────────────────────────────────────────────────────────────┘
 ```
-
-### Conexión de red (acceso remoto)
-
-| Servicio   | Host interno       | Puerto | Descripción                         |
-|------------|--------------------|--------|-------------------------------------|
-| Frontend   | `0.0.0.0`          | `3001` | Next.js dev server                  |
-| Backend    | `0.0.0.0`          | `3000` | Express API                         |
-| MySQL (túnel) | `127.0.0.1`     | `3307` | Túnel SSH al servidor de base de datos |
-| Acceso LAN | `192.168.1.221`    | `3001` | URL de acceso desde la red local    |
 
 ---
 
@@ -100,26 +102,35 @@ El sistema es **mock-first** en frontend (no requiere backend para desarrollo de
 |---|---|---|
 | Next.js | 14.2.35 | Framework App Router, SSR/SSG |
 | React | 18 | UI components |
-| TypeScript | 5 | Tipado estático |
-| Tailwind CSS | 3.4 | Utilidades CSS |
+| TypeScript | 5 | Tipado estático estricto |
+| Tailwind CSS | 3.4 | Utilidades CSS + tokens de diseño |
+| socket.io-client | 4.8.x | WebSocket cliente (tiempo real) |
 | next-themes | 0.4.6 | Dark/Light mode |
-| Recharts | 3.8.1 | Gráficas de progreso (SSR-safe) |
+| Recharts | 3.8.x | Gráficas BI (BarChart, PieChart, LineChart) |
+| Zod | 4.x | Validación de formularios |
 
 ### Backend
 | Tecnología | Versión | Uso |
 |---|---|---|
-| Node.js | LTS | Runtime |
+| Node.js | 22 | Runtime |
 | Express | 4.18 | HTTP server y routing |
+| Socket.io | 4.8.x | WebSocket servidor con rooms JWT |
 | mysql2 | 3.x | Cliente MySQL con pool de conexiones |
 | jsonwebtoken | 9.x | Autenticación JWT (8h expiry) |
 | bcryptjs | 3.x | Hash de contraseñas |
+| multer | 2.x | Upload de archivos (PDF, DOCX) |
+| nodemailer | 6.x | Envío de correos (aprobación de tareas) |
+| @google/generative-ai | 0.24.x | Gemini para procesamiento de minutas |
 | axios | 1.x | Cliente HTTP para Groq API |
 | dotenv | 16.x | Variables de entorno |
 
-### IA
-| Servicio | Modelo | Uso |
+### Infraestructura
+| Componente | Tecnología | Detalle |
 |---|---|---|
-| Groq | `llama-3.3-70b-versatile` | Extracción de tareas desde minuta de reunión |
+| Contenedores | Docker Compose | 3 servicios: api, frontend, db-tunnel |
+| DB Tunnel | Alpine SSH | Expone MySQL remoto como localhost:3306 |
+| Base de datos | MySQL (DigitalOcean) | Acceso vía túnel SSH |
+| IA | Google Gemini / Groq Llama 3.3 | Extracción de tareas desde minutas |
 
 ---
 
@@ -127,390 +138,460 @@ El sistema es **mock-first** en frontend (no requiere backend para desarrollo de
 
 ```
 alzak-flow/
+│
 ├── backend/
-│   ├── index.js              # API REST completa (257 líneas)
+│   ├── index.js                    # Entry point: Express + Socket.io + JWT rooms
 │   ├── package.json
-│   └── .env                  # Variables de entorno (no versionado)
+│   ├── Dockerfile                  # Node 22 Alpine
+│   ├── Dockerfile.tunnel           # Túnel SSH hacia MySQL
+│   ├── tunnel-entrypoint.sh        # Script de inicio del túnel
+│   ├── docker-compose.yml          # 3 servicios: api · frontend · db-tunnel
+│   └── src/
+│       ├── config/
+│       │   ├── db.js               # Pool MySQL2
+│       │   ├── migrate.js          # Auto-migración al arrancar (ALTER TABLE)
+│       │   └── socket.js           # Singleton io + helpers emitNotifAlert / emitTaskUpdated
+│       ├── middleware/
+│       │   └── auth.js             # authMiddleware JWT + requireRole()
+│       ├── controllers/
+│       │   ├── authController.js   # Login + bcrypt
+│       │   ├── taskController.js   # CRUD tareas + emits socket
+│       │   ├── notesController.js  # Chat de notas + new_note emit
+│       │   ├── notificationController.js  # RBAC notifications
+│       │   ├── userController.js   # CRUD usuarios + force_logout + role_changed
+│       │   ├── projectController.js
+│       │   ├── meetingController.js  # Procesamiento IA (Gemini/Groq)
+│       │   ├── ingestaController.js  # Ingesta desde Google Drive
+│       │   ├── uploadController.js   # Upload PDF/DOCX → texto
+│       │   └── statsController.js    # KPIs para dashboard BI
+│       ├── routes/
+│       │   ├── authRoutes.js
+│       │   ├── taskRoutes.js       # /tareas + /:id/notas + /:id/aprobar
+│       │   ├── userRoutes.js       # CRUD + PATCH /:correo/rol
+│       │   ├── notificationRoutes.js
+│       │   ├── projectRoutes.js
+│       │   ├── meetingRoutes.js
+│       │   ├── minutasRoutes.js
+│       │   ├── uploadRoutes.js
+│       │   ├── emailRoutes.js
+│       │   └── statsRoutes.js
+│       └── services/
+│           └── emailService.js     # Cola de correos consolidados (aprobación)
 │
 └── frontend/
+    ├── Dockerfile                  # Next.js standalone build (Node 22)
+    ├── next.config.mjs
+    ├── tailwind.config.ts
     ├── app/
-    │   ├── layout.tsx         # Root layout (ThemeProvider, AuthProvider)
-    │   ├── page.tsx           # Redirect: / → /dashboard o /login
-    │   ├── globals.css        # Variables CSS, glass, animaciones
-    │   ├── (auth)/
-    │   │   └── login/
-    │   │       └── page.tsx   # Login + Dev Bypass (3 roles)
+    │   ├── layout.tsx              # Root: ThemeProvider + AuthProvider
+    │   ├── page.tsx                # Redirect → /dashboard o /login
+    │   ├── globals.css             # Variables CSS, glass, animaciones
+    │   ├── (auth)/login/           # Login + Dev Bypass (3 roles)
     │   └── (dashboard)/
-    │       ├── layout.tsx     # Guard auth, todos los Providers
-    │       ├── dashboard/     # Métricas, gráficas Recharts
-    │       ├── procesador/    # Procesador IA + Staging Area
-    │       ├── tareas/        # Kanban Board + Historial
-    │       ├── proyectos/     # CRUD 41 proyectos
-    │       ├── usuarios/      # CRUD usuarios + toggle activo
-    │       ├── notas/         # Chat centralizado de notas
-    │       ├── perfil/        # Perfil de usuario + actividad
-    │       └── admin/
-    │           └── logs/      # Audit Log + System Health
+    │       ├── layout.tsx          # Auth guard + todos los Providers
+    │       ├── dashboard/          # BI: KPIs + gráficas + actividad reciente
+    │       ├── procesador/         # Procesador IA (2 pasos) + Staging Area
+    │       ├── tareas/             # Kanban + Historial + Lista Maestra
+    │       ├── revision/           # Cola de aprobación (admin+)
+    │       ├── proyectos/          # CRUD proyectos
+    │       ├── usuarios/           # CRUD usuarios + cambio de rol
+    │       ├── notas/              # Chat centralizado por tarea
+    │       ├── perfil/             # Perfil + resumen de actividad
+    │       └── admin/logs/         # Audit Log + System Health
     │
     ├── components/
-    │   ├── Navigation.tsx     # Sidebar desktop + Drawer mobile + Bottom tabs
-    │   ├── TaskModal.tsx      # Modal detalle de tarea con notas y AI context
-    │   ├── NewTaskModal.tsx   # Modal crear nueva tarea
-    │   ├── NotificationPanel.tsx # Panel de notificaciones animado
-    │   ├── ProjectCharts.tsx  # BarChart + PieChart (Recharts)
-    │   ├── Toast.tsx          # Sistema de toasts (4 tipos)
-    │   └── ThemeToggle.tsx    # Botón dark/light mode
+    │   ├── Navigation.tsx          # Sidebar · Drawer · Bottom tabs · Notif bell
+    │   ├── TaskModal.tsx           # Detalle tarea: status, prioridad, chat, IA
+    │   ├── NewTaskModal.tsx        # Crear tarea manual
+    │   ├── NotificationPanel.tsx   # Panel notificaciones (solo no-leídas + historial)
+    │   ├── Toast.tsx               # Sistema de toasts (4 tipos, auto-dismiss)
+    │   ├── ProjectCharts.tsx       # Recharts BarChart + PieChart
+    │   ├── ThemeToggle.tsx
+    │   ├── dashboard/              # KPICards · BICharts · DashboardFilters · OverdueTasks
+    │   ├── procesador/             # InputStep · ValidationStep · StagedTaskCard
+    │   ├── revision/               # RevisionCard · RevisionRow
+    │   ├── tareas/                 # KanbanCard · KanbanViews · HistorialView
+    │   │                           # ListaMaestraView · StatusChip · TaskBoard
+    │   ├── proyectos/              # ProjectCard · ProjectTable · ProjectForm · ProjectStats
+    │   ├── usuarios/               # UserCard · UserFormModal · UsersPanel
+    │   └── ui/                     # Button · Input · Modal · Badge · Switch (átomos)
     │
     ├── context/
-    │   ├── AuthContext.tsx        # Auth JWT + loginMock()
-    │   ├── SidebarContext.tsx     # collapsed, mobileOpen
-    │   ├── TaskStoreContext.tsx   # Tasks CRUD en memoria
-    │   ├── StagingContext.tsx     # Tareas pendientes de validación IA
-    │   ├── NotificationContext.tsx # Notificaciones con badge
-    │   └── ProjectStoreContext.tsx # Proyectos CRUD en memoria
+    │   ├── AuthContext.tsx         # JWT + loginMock + socket user events
+    │   ├── TaskStoreContext.tsx    # Tasks CRUD + socket task_updated/task_created
+    │   ├── NotificationContext.tsx # Notifs DB + socket alert + Web Audio sound
+    │   ├── ProjectStoreContext.tsx # Proyectos CRUD
+    │   ├── StagingContext.tsx      # Tareas pendientes de validación IA
+    │   ├── UserStoreContext.tsx    # Usuarios (lista, CRUD)
+    │   └── SidebarContext.tsx      # collapsed, mobileOpen
+    │
+    ├── hooks/
+    │   ├── useSocket.ts            # Singleton socket.io-client con JWT auth
+    │   ├── useTaskNotes.ts         # Chat notas: optimistic UI + socket + typing
+    │   ├── useTaskBoard.ts         # Kanban: filtros, modal, auto-open por URL param
+    │   ├── useRevision.ts          # Cola revisión: approve/reject/approveAll
+    │   ├── useProcesador.ts        # Flujo procesador IA 2 pasos
+    │   ├── useProyectos.ts         # CRUD proyectos + filtros
+    │   ├── useUsuarios.ts          # CRUD usuarios
+    │   ├── useUsuariosPage.ts      # Estado UI página usuarios
+    │   ├── useDashboardBI.ts       # KPIs, gráficas, filtros dashboard
+    │   └── useListaMaestra.ts      # Lista maestra de tareas + export PDF
+    │
+    ├── schemas/
+    │   └── proyecto.ts             # Zod schemas (ProjectFormSchema, StatusEnum)
     │
     └── lib/
-        ├── mockData.ts        # Tipos + datos mock (15 tareas, 41 proyectos,
-        │                      # 16 usuarios, 20 logs, 7 notificaciones)
-        └── api.ts             # authFetch() wrapper con JWT
+        ├── api.ts                  # authFetch() wrapper JWT + backendBase()
+        ├── mockData.ts             # Tipos TypeScript de dominio
+        ├── pdfUtils.ts             # Generación de PDF (jsPDF + autoTable)
+        ├── textParser.ts           # Parser de texto para extracción local
+        └── prepareTasksForRevision.ts  # Mapeo staging → revision tasks
 ```
 
 ---
 
-## 5. Backend — API REST
+## 5. Backend — API REST completa
 
-Base URL: `http://localhost:3000`
+Base URL: `http://servidor:3005`
 
-### `POST /auth/login`
-Autenticación de usuario. No requiere token.
+Todos los endpoints protegidos requieren: `Authorization: Bearer <JWT>`
 
-**Body:**
-```json
-{
-  "email": "usuario@alzak.org",
-  "password": "contraseña"
-}
+### Auth
+
+| Método | Ruta | Rol | Descripción |
+|--------|------|-----|-------------|
+| POST | `/auth/login` | Público | Login → JWT + user |
+| POST | `/auth/register` | superadmin | Registro de nuevo usuario |
+
+### Tareas
+
+| Método | Ruta | Rol | Descripción |
+|--------|------|-----|-------------|
+| GET | `/tareas` | todos | Lista tareas (RBAC: user ve solo las suyas) |
+| POST | `/tareas/crear` | admin+ | Crear tarea manual |
+| POST | `/tareas/commit-staging` | admin+ | Aprobar batch de staging (idempotente) |
+| GET | `/tareas/revision` | admin+ | Cola de revisión (estado `Pendiente Revisión`) |
+| PATCH | `/tareas/:id/revision` | admin+ | Editar tarea en revisión |
+| PATCH | `/tareas/:id/aprobar` | admin+ | Aprobar → `Pendiente` + email + socket |
+| DELETE | `/tareas/:id` | admin+ | Rechazar y eliminar tarea en revisión |
+| PATCH | `/tareas/:id` | admin+ | Actualizar prioridad / fecha / responsable |
+| PATCH | `/tareas/:id/status` | todos | Cambiar estado (Pendiente / En Proceso / Completada) |
+| GET | `/tareas/:id/notas` | todos | Listar notas de chat de la tarea |
+| POST | `/tareas/:id/notas` | todos | Añadir nota (socket emit `new_note`) |
+
+### Usuarios
+
+| Método | Ruta | Rol | Descripción |
+|--------|------|-----|-------------|
+| GET | `/users` | admin+ | Lista usuarios |
+| DELETE | `/users/:correo` | admin+ | Eliminar usuario (socket: `user_force_logout`) |
+| PATCH | `/users/:correo/rol` | superadmin | Cambiar rol (socket: `user_role_changed`) |
+
+### Proyectos
+
+| Método | Ruta | Rol | Descripción |
+|--------|------|-----|-------------|
+| GET | `/api/projects` | todos | Lista proyectos |
+| POST | `/api/projects` | admin+ | Crear proyecto |
+| PATCH | `/api/projects/:id` | admin+ | Actualizar proyecto |
+| DELETE | `/api/projects/:id` | superadmin | Eliminar proyecto |
+
+### Procesamiento IA
+
+| Método | Ruta | Rol | Descripción |
+|--------|------|-----|-------------|
+| POST | `/procesar-reunion` | admin+ | Envía texto a Gemini/Groq, extrae tareas |
+| POST | `/upload/texto` | admin+ | Upload PDF/DOCX → texto extraído |
+| GET | `/api/minutas` | admin+ | Lista minutas procesadas |
+
+### Notificaciones
+
+| Método | Ruta | Rol | Descripción |
+|--------|------|-----|-------------|
+| GET | `/api/notifications` | todos | Notificaciones del usuario (RBAC) |
+| PATCH | `/api/notifications/:id/leer` | todos | Marcar una como leída |
+| PATCH | `/api/notifications/leer-todo` | todos | Marcar todas como leídas |
+
+### Stats / BI
+
+| Método | Ruta | Rol | Descripción |
+|--------|------|-----|-------------|
+| GET | `/api/stats` | admin+ | KPIs para dashboard (tareas por estado, proyecto, usuario) |
+
+### Sistema
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/health` | Healthcheck: `{ status: 'ok', ts }` |
+
+---
+
+## 6. Socket.io — Tiempo real
+
+El servidor Socket.io corre en el mismo puerto `3005` que la API HTTP. La conexión requiere un JWT válido en `socket.handshake.auth.token`.
+
+### Rooms
+
+| Room | Quién entra | Cuándo |
+|------|-------------|--------|
+| `alzak_global` | Todos los usuarios autenticados | Al conectar |
+| `user_{email}` | Cada usuario en su room privado | Al conectar |
+| `task_{id}` | Quién abre el chat de esa tarea | Evento `join_task` |
+
+### Eventos servidor → cliente
+
+| Evento | Room | Payload | Qué hace en el cliente |
+|--------|------|---------|------------------------|
+| `task_updated` | `alzak_global` | `{ id, status?, prioridad?, fecha_entrega?, ... }` | Mueve tarjeta Kanban sin recargar |
+| `task_created` | `alzak_global` | — | Refresca board y cola de revisión |
+| `notification_alert` | `alzak_global` o `user_{email}` | — | Refresca badge + tono Web Audio API |
+| `new_note` | `task_{id}` | `TaskNota` | Burbuja aparece en el chat del otro usuario |
+| `typing_start` | `task_{id}` (otros) | `{ taskId, userName }` | Muestra "X está escribiendo…" |
+| `typing_stop` | `task_{id}` (otros) | `{ taskId }` | Oculta indicador de escritura |
+| `user_force_logout` | `user_{email}` | — | Cierra sesión del usuario eliminado |
+| `user_role_changed` | `user_{email}` | `{ email, role }` | Actualiza rol en sesión + Toast |
+
+### Eventos cliente → servidor (relay)
+
+| Evento | Payload | Acción del servidor |
+|--------|---------|---------------------|
+| `join_task` | `taskId` | `socket.join('task_{taskId}')` |
+| `leave_task` | `taskId` | `socket.leave('task_{taskId}')` |
+| `typing_start` | `{ taskId, userName }` | Reenvía a `task_{taskId}` excepto al emisor |
+| `typing_stop` | `{ taskId }` | Reenvía a `task_{taskId}` excepto al emisor |
+
+### Flujo: Admin mueve tarea a "Completada"
+
+```
+Admin UI → PATCH /tareas/:id/status { status: "Completada" }
+         → Backend actualiza DB
+         → emitTaskUpdated({ id, status: "Completada" }) → alzak_global
+         → Todos los clientes conectados actualizan la tarjeta en su tablero
 ```
 
-**Respuesta exitosa (200):**
-```json
-{
-  "token": "eyJhbGc...",
-  "user": {
-    "email": "usuario@alzak.org",
-    "nombre": "Nombre Completo",
-    "role": "admin"
-  }
-}
+### Flujo: Notificación instantánea
+
+```
+User escribe nota → POST /tareas/:id/notas
+                  → INSERT task_notas
+                  → io.emit('new_note', nota) → room task_{id}  [chat en vivo]
+                  → INSERT db_notifications
+                  → emitNotifAlert(null)       → alzak_global   [badge admins]
 ```
 
 ---
 
-### `GET /users`
-Lista usuarios activos. Requiere token JWT.
+## 7. Frontend — Páginas y módulos
 
-**Headers:** `Authorization: Bearer <token>`
-
-**Respuesta (200):**
-```json
-{
-  "status": "success",
-  "users": [
-    { "correo": "...", "nombre_completo": "...", "role": "user" }
-  ]
-}
-```
-
----
-
-### `POST /procesar-reunion`
-Envía texto de reunión a **Groq (Llama 3.3)**, extrae tareas y las guarda en MySQL. Requiere rol `admin` o `superadmin`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Body:**
-```json
-{
-  "texto": "Texto completo de la minuta de reunión...",
-  "responsable_sugerido": "Nombre del responsable principal (opcional)"
-}
-```
-
-**Respuesta exitosa (200):**
-```json
-{
-  "status": "success",
-  "meetingId": 42,
-  "proyecto": "5024",
-  "tareas_creadas": 3
-}
-```
-
-**Proceso interno:**
-1. Llama a `api.groq.com` con `llama-3.3-70b-versatile` en modo `json_object`
-2. Valida que `id_proyecto` esté en la lista de 37 IDs válidos (fallback: `"1111"`)
-3. Inserta en tabla `meetings` (resumen + texto original)
-4. Por cada tarea: busca el correo del responsable en `users` por nombre similar, inserta en `tasks`
-
----
-
-### `GET /tareas`
-Retorna tareas con contexto de la reunión. RBAC aplicado en DB.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params opcionales:**
-- `prioridad` — `Alta | Media | Baja`
-- `proyecto` — ID de proyecto (ej: `5024`)
-
-**RBAC:**
-- `superadmin` / `admin`: ven todas las tareas
-- `user`: solo ven sus propias tareas (`responsable_correo = email del token`)
-
-**Respuesta (200):**
-```json
-{
-  "status": "success",
-  "total": 7,
-  "tareas": [
-    {
-      "id": 1,
-      "id_proyecto": "5024",
-      "tarea_descripcion": "Preparar informe de avance...",
-      "responsable_nombre": "Lina Salcedo",
-      "responsable_correo": "lina.salcedo@alzak.org",
-      "prioridad": "Alta",
-      "status": "Pendiente",
-      "fecha_entrega": "2026-04-20",
-      "resumen_meeting": "Reunión de seguimiento Bayer 5024..."
-    }
-  ]
-}
-```
-
----
-
-## 6. Frontend — Páginas y módulos
-
-### `/` — Root redirect
-Redirige a `/dashboard` si autenticado, a `/login` si no.
-
----
-
-### `/login` — Autenticación
-- Formulario email + contraseña → POST `/auth/login`
+### `/login`
+- Formulario email + contraseña → `POST /auth/login`
 - Token guardado en `localStorage` (`alzak_token`, `alzak_user`)
-- **Dev Bypass Panel** (visible solo en desarrollo): 3 botones de acceso rápido por rol sin necesidad de backend
+- **Dev Bypass** visible en desarrollo: acceso por rol sin backend
 
 ---
 
-### `/dashboard` — Panel principal
-- Estadísticas globales: tareas por estado, proyectos activos
-- **Gráfica de barras** agrupada por proyecto (Por Hacer / En Progreso / Hecho)
-- **Gráfica de dona** distribución de carga por proyecto
-- Filtros: período (30d / 90d / Todo) y proyecto
-- Cargado con `next/dynamic({ ssr: false })` para compatibilidad Recharts
+### `/dashboard` — BI Ejecutivo
+- **KPIs**: Tareas totales / Completadas / En Proceso / Vencidas
+- **Gráfica de barras**: tareas por proyecto (agrupadas por estado)
+- **Gráfica de dona**: distribución de carga por proyecto
+- **Mis actividades recientes**: tareas propias del usuario
+- **Tareas vencidas**: alertas de deadline
+- Filtros: período (7d / 30d / 90d / Todo) + proyecto
+- Datos desde `GET /api/stats` (admin) o calculados del store (user)
 
 ---
 
-### `/procesador` — Procesador de Minutas con IA _(admin+)_
-**Flujo en 2 pasos con stepper visual:**
-
+### `/procesador` — Procesador de Minutas IA _(admin+)_
 **Paso 1 — Ingresar minuta:**
-- Textarea de texto libre
-- Selector de responsable principal (ayuda a la IA)
-- Botón `✨ Procesar con IA` (simula llamada con delay 1.4s en modo mock)
+- Textarea libre o upload de archivo (PDF / DOCX → `/upload/texto`)
+- Selector de proyecto y responsable principal
+- Botón `✨ Procesar con IA` → envía a Gemini / Groq
 
 **Paso 2 — Staging Area (validación):**
-- Lista de tarjetas editables generadas por IA
-- Cada tarjeta permite editar inline:
-  - Descripción (textarea)
-  - Responsable (buscador autocomplete de usuarios)
-  - Prioridad (Alta / Media / Baja)
-  - Fecha de entrega (date picker)
-  - Estado inicial (Pendiente / En Proceso / Completada)
-- Acciones por tarea: `Aprobar` → Kanban + Notificación | `✕` → Descartar
-- Botones globales: `✅ Aprobar todo (N)` | `Descartar todo`
-- Al aprobar: `createTask()` + `addNotification()` + `addToast("✅ Tarea aprobada y asignada a [Nombre]")`
+- Tarjetas editables por tarea extraída: descripción, responsable, prioridad, fecha
+- `Aprobar` → pasa a cola de Revisión + notificación
+- `✕` → descartar tarea individual
+- `✅ Aprobar todo` → batch atómico (idempotente con `session_key`)
 
 ---
 
-### `/tareas` — Kanban Board + Historial
+### `/revision` — Cola de Revisión _(admin+)_
+- Tareas en estado `Pendiente Revisión` esperando aprobación final
+- Vista card (mobile) / tabla (desktop)
+- Edición inline de campos antes de aprobar
+- `Aprobar` → tarea pasa a Kanban + email al responsable + socket `task_created`
+- `Rechazar` → elimina la tarea + socket `task_created` (refresca listas)
+- `Aprobar todo` con guard de idempotencia (no duplica si se llama dos veces)
+
+---
+
+### `/tareas` — Kanban Board _(todos los roles)_
 **Tab Board:**
-- **Vista Admin** (`admin`/`superadmin`): swimlanes por proyecto con columnas Pendiente / En Proceso / Completada
-- **Vista User**: 3 columnas simples con sus tareas asignadas
-- Chips de estado inline en cada tarjeta (cambio sin abrir modal)
-- Alertas de deadline: ≤ 2 días → `⚠️` ámbar | vencida → rojo
-- Buscador por descripción, responsable o ID de proyecto
-- Filtros de prioridad (Todas / Alta / Media / Baja)
-- Botón `+ Nueva tarea` (solo admin+) → abre `NewTaskModal`
-- Clic en tarjeta → abre `TaskModal` con detalle completo
+- **Admin/superadmin**: swimlanes por proyecto con 3 columnas (Pendiente / En Proceso / Completada)
+- **User**: 3 columnas con sus tareas asignadas
+- Sincronización en tiempo real: otra sesión mueve tarjeta → se mueve en tu tablero
+- Alertas deadline: ≤ 2 días → ámbar | vencida → rojo
+- Buscador + filtro por prioridad
+- `+ Nueva tarea` (admin+) → `NewTaskModal`
+- Clic en tarjeta → `TaskModal` completo
+- Auto-apertura por URL param: `/tareas?open=42` (desde notificaciones)
 
 **Tab Historial:**
-- Tareas completadas agrupadas por fecha
-- Cada entrada muestra: descripción, proyecto, responsable, prioridad, notas
+- Tareas completadas agrupadas por fecha de completado
+
+**Tab Lista Maestra** _(admin+)_:
+- Vista tabla plana de todas las tareas
+- Exportar a PDF
 
 ---
 
 ### `/proyectos` — Gestión de proyectos _(admin+)_
-- Lista de 41 proyectos activos, inactivos y completados
-- **Vista mobile**: stack de tarjetas
-- **Vista desktop**: tabla con columnas Código / Nombre / Financiador / Estado
-- Filtros: búsqueda libre + filtro por estado
+- Lista con filtros de estado (Activo / Completado / Inactivo)
+- Buscador libre
 - Estadísticas: Total / Activos / Completados / Inactivos
-- Modal crear: código (inmutable), nombre, financiador, estado
-- Modal editar: mismos campos excepto código (read-only)
+- Vista mobile: cards | Vista desktop: tabla
+- Modal crear/editar: código (inmutable), nombre, financiador, empresa, estado
 
 ---
 
-### `/usuarios` — CRUD de usuarios _(admin+)_
-- Tarjetas de usuario con avatar, rol, email y toggle activo/inactivo
-- Filtros por rol (superadmin / admin / user) y estado (activo / inactivo)
-- Buscador por nombre o correo
-- Modal crear/editar: nombre, correo (validación formato), rol por chips, switch activo
-- Validación: no duplicar correo
+### `/usuarios` — Gestión de usuarios _(admin+)_
+- Tarjetas con avatar, rol (badge color), email, estado activo
+- Filtros: rol + estado + buscador
+- Modal crear: nombre, correo, contraseña, rol
+- Modal editar: cambiar rol (SuperAdmin únicamente)
+- Eliminar: confirmación + Socket.io `user_force_logout` al afectado
+- Cambio de rol: `PATCH /users/:correo/rol` → socket `user_role_changed`
 
 ---
 
 ### `/notas` — Centro de notas _(todos los roles)_
 - **Panel izquierdo**: lista de tareas (admin ve todas, user ve las suyas)
-- **Panel derecho**: chat de notas de la tarea seleccionada
-  - Burbujas de conversación estilo chat (mensajes propios a la derecha)
-  - Input de texto + botón Enviar
+- **Panel derecho**: chat de la tarea seleccionada
+  - Burbujas de conversación (propio: derecha azul | otro: izquierda gris)
+  - **Optimistic UI**: el mensaje aparece al instante antes de que el servidor responda
+  - **Tiempo real**: la contraparte ve la burbuja sin recargar (Socket.io)
+  - **Typing indicator**: "X está escribiendo…" con 3 puntos animados
+  - Indicador `_pending` (spinner) → `_error` (rojo 2s) en caso de fallo
   - Auto-scroll al último mensaje
-- **Resumen global** (solo admin): actividad reciente de los últimos 5 mensajes
 
 ---
 
-### `/perfil` — Perfil de usuario _(todos los roles)_
-- Avatar con iniciales, nombre, rol (con badge de color)
-- Email y organización
-- **Resumen de actividad**: total asignadas / completadas / en proceso / pendientes
-- Barra de progreso de tasa de completado
-- Lista de tareas completadas recientemente
-- Botón `Cerrar sesión`
+### `/perfil` — Perfil de usuario
+- Avatar con iniciales, nombre, rol, email
+- Resumen: total asignadas / completadas / en proceso / vencidas
+- Barra de progreso de completado
+- Tareas recientes
+- Botón cerrar sesión
 
 ---
 
 ### `/admin/logs` — Audit Log _(solo superadmin)_
-- Tabla de 20 entradas de log: usuario, correo, acción, módulo, detalle, timestamp
-- Widget **System Health**: estado de API, Base de datos, IA (Groq) y Auth (JWT) con indicadores de latencia
+- Tabla de logs de actividad
+- Widget **System Health**: estado de API, DB, IA y Auth
 
 ---
 
-## 7. Contextos React (estado global)
+## 8. Hooks personalizados
 
-Todos los contextos se inicializan con datos mock y viven en memoria durante la sesión.
+| Hook | Módulo | Responsabilidad |
+|------|--------|-----------------|
+| `useSocket` | Global | Singleton `socket.io-client` con JWT, lazy-init browser-only |
+| `useTaskNotes` | Chat | Fetch notas, optimistic UI, socket `new_note`, typing debounced 3s |
+| `useTaskBoard` | Tareas | Filtros Kanban, modal, auto-open por URL param (`useRef` anti-duplicado) |
+| `useRevision` | Revisión | Approve/reject/approveAll con idempotency lock (`useRef`) |
+| `useProcesador` | Procesador | Stepper 2 pasos, llamada IA, staging |
+| `useProyectos` | Proyectos | CRUD + filtros + Zod validation |
+| `useUsuarios` | Usuarios | CRUD usuarios + cambio de rol |
+| `useUsuariosPage` | Usuarios | Estado UI: modal, búsqueda, filtros |
+| `useDashboardBI` | Dashboard | KPIs, filtros, datos de stats API |
+| `useListaMaestra` | Tareas | Vista tabla + export PDF (jsPDF + autoTable) |
+
+---
+
+## 9. Contextos React (estado global)
 
 ### `AuthContext`
 ```typescript
-interface AuthContextType {
-  user: { email; nombre; role } | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  login(email, password): Promise<void>;   // → POST /auth/login
-  loginMock(role: UserRole): void;         // Dev Bypass sin backend
-  logout(): void;
+{
+  user: { email, nombre, role } | null
+  login(email, password): Promise<{ ok, error? }>
+  loginMock(role): void          // Dev Bypass sin backend
+  logout(): void                 // limpia token + desconecta socket
+  isAuthenticated: boolean
+  isLoading: boolean
 }
 ```
+Escucha via Socket.io:
+- `user_force_logout` → logout automático (cuenta eliminada)
+- `user_role_changed` → actualiza rol en localStorage + dispara `alzak:role_changed`
 
 ### `TaskStoreContext`
 ```typescript
-interface TaskStoreCtx {
-  tasks: TaskWithMeta[];           // MockTarea + notas[] + completedAt
-  updateStatus(id, status): void;  // Cambia estado, registra completedAt
-  addNote(id, texto, autor): void; // Añade nota de seguimiento
-  createTask(data: NewTaskData): TaskWithMeta; // Crea tarea aprobada
+{
+  tasks: TaskWithMeta[]
+  loading: boolean
+  updateStatus(id, status): void        // optimistic + fire-and-forget API
+  createTask(data): TaskWithMeta        // optimistic local
+  refresh(): Promise<void>
+  revisionTasks: RevisionTask[]
+  revisionCount: number
+  refreshRevision(): Promise<void>
+  newIngestedFiles: string[]            // archivos Drive nuevos
+  clearNewIngestedFiles(): void
+}
+```
+Escucha via Socket.io:
+- `task_updated` → aplica delta en el store sin recargar
+- `task_created` → llama `refresh()` + `refreshRevision()`
+
+### `NotificationContext`
+```typescript
+{
+  notifications: DBNotification[]
+  unreadCount: number
+  refresh(): Promise<void>
+  markRead(id): Promise<void>           // optimistic
+  markAllRead(): Promise<void>          // optimistic
+  addNotification(n): void
+}
+```
+Escucha via Socket.io:
+- `notification_alert` → `refresh()` + tono Web Audio API (si pestaña activa)
+
+### `ProjectStoreContext`
+```typescript
+{
+  projects: MockProject[]
+  createProject(p): void
+  updateProject(id, updates): void
+  deleteProject(id): void
 }
 ```
 
 ### `StagingContext`
 ```typescript
-interface StagingCtx {
-  stagedTasks: StagingTask[];      // Tareas pendientes de validación IA
-  hasPending: boolean;
-  addStagedTasks(tasks[]): void;   // Carga resultado del procesador
-  updateStagedTask(id, updates): void; // Edición inline en validación
-  removeTask(stagingId): void;     // Descartar una tarea
-  clearAll(): void;                // Reiniciar staging
+{
+  stagedTasks: StagingTask[]
+  hasPending: boolean
+  addStagedTasks(tasks[]): void
+  updateStagedTask(id, updates): void
+  removeTask(stagingId): void
+  clearAll(): void
 }
 ```
 
-### `NotificationContext`
+### `UserStoreContext`
 ```typescript
-interface NotificationCtx {
-  notifications: MockNotification[];
-  unreadCount: number;
-  markRead(id): void;
-  markAllRead(): void;
-  addNotification(n): void;        // Disparado al aprobar tareas
-}
-```
-
-### `ProjectStoreContext`
-```typescript
-interface ProjectStoreCtx {
-  projects: MockProject[];         // 41 proyectos inicializados
-  createProject(p): void;
-  updateProject(id, updates): void;
-}
-```
-
-### `SidebarContext`
-```typescript
-interface SidebarContextType {
-  collapsed: boolean;              // Sidebar desktop colapsado
-  mobileOpen: boolean;             // Drawer móvil abierto
-  toggle(): void;
-  toggleMobile(): void;
-  closeMobile(): void;
+{
+  users: User[]
+  loading: boolean
+  refresh(): Promise<void>
 }
 ```
 
 ---
 
-## 8. Componentes reutilizables
-
-### `Navigation`
-Maneja los 3 modos de navegación:
-- **Desktop expandido** (`w-64`): logo, nav items con label, campana de notificaciones, avatar → `/perfil`, logout
-- **Desktop colapsado** (`w-[68px]`): solo iconos con tooltips
-- **Mobile Top Bar**: hamburger, logo, campana, avatar
-- **Mobile Drawer** (`w-72`, `z-60`): cubre pantalla, nav items + footer con logout
-- **Mobile Bottom Tab Bar**: primeros 5 items del rol con iconos y etiquetas
-
-### `NotificationPanel`
-- Animación de entrada: `notif-in` (fade + slide + scale, `transform-origin: top right`)
-- **Desktop**: posición `absolute left-full bottom-0 ml-3` (a la derecha del sidebar)
-- **Mobile**: posición `fixed top-14 right-4` (debajo del header)
-- Cierre: clic fuera, tecla Escape, botón ×
-
-### `TaskModal`
-- Deadline urgency badge (≤ 2 días → ámbar, vencida → rojo)
-- 3 chips de estado con anillo activo
-- Sección "Contexto IA" con `resumen_meeting`
-- Lista de notas con autor y timestamp
-- Añadir nota con Ctrl+Enter o botón
-
-### `NewTaskModal`
-- Selector de proyectos activos (filtrado del `ProjectStoreContext`)
-- Buscador autocomplete de usuarios (MOCK_USERS)
-- Chips de prioridad
-- Date pickers (inicio + entrega con validación min)
-- Validaciones: proyecto, descripción, responsable, fecha
-
-### `Toast`
-- 4 tipos: `success | info | warning | error`
-- Auto-dismiss: 4500ms
-- Posición: `fixed bottom-24 lg:bottom-5 right-4 z-[200]`
-
-### `ProjectCharts`
-- `ProgresoBarChart`: barras agrupadas por proyecto (3 colores por estado), cargado con `dynamic({ ssr: false })`
-- `CargaPieChart`: dona con etiquetas de porcentaje, `PieLabelRenderProps`
-
----
-
-## 9. Sistema de roles RBAC
+## 10. Sistema de roles RBAC
 
 ```
 superadmin (3) > admin (2) > user (1)
@@ -519,12 +600,13 @@ superadmin (3) > admin (2) > user (1)
 ### Acceso por ruta
 
 | Ruta | user | admin | superadmin |
-|---|:---:|:---:|:---:|
+|------|:----:|:-----:|:----------:|
 | `/dashboard` | ✅ | ✅ | ✅ |
-| `/tareas` | ✅ (solo propias) | ✅ (todas) | ✅ (todas) |
-| `/notas` | ✅ (propias) | ✅ (todas) | ✅ (todas) |
+| `/tareas` | ✅ solo propias | ✅ todas | ✅ todas |
+| `/notas` | ✅ propias | ✅ todas | ✅ todas |
 | `/perfil` | ✅ | ✅ | ✅ |
 | `/procesador` | ❌ | ✅ | ✅ |
+| `/revision` | ❌ | ✅ | ✅ |
 | `/proyectos` | ❌ | ✅ | ✅ |
 | `/usuarios` | ❌ | ✅ | ✅ |
 | `/admin/logs` | ❌ | ❌ | ✅ |
@@ -532,238 +614,278 @@ superadmin (3) > admin (2) > user (1)
 ### Acceso a acciones
 
 | Acción | user | admin | superadmin |
-|---|:---:|:---:|:---:|
-| Ver tareas propias | ✅ | ✅ | ✅ |
+|--------|:----:|:-----:|:----------:|
+| Ver/cambiar estado de sus tareas | ✅ | ✅ | ✅ |
 | Ver todas las tareas | ❌ | ✅ | ✅ |
-| Cambiar estado de tarea | ✅ | ✅ | ✅ |
-| Crear nueva tarea | ❌ | ✅ | ✅ |
+| Crear tarea manual | ❌ | ✅ | ✅ |
 | Procesar minuta con IA | ❌ | ✅ | ✅ |
-| Aprobar/descartar staging | ❌ | ✅ | ✅ |
-| CRUD usuarios | ❌ | ✅ | ✅ |
+| Aprobar/rechazar staging y revisión | ❌ | ✅ | ✅ |
 | CRUD proyectos | ❌ | ✅ | ✅ |
+| CRUD usuarios | ❌ | ✅ | ✅ |
+| Cambiar rol de usuario | ❌ | ❌ | ✅ |
+| Eliminar proyectos | ❌ | ❌ | ✅ |
 | Ver Audit Log | ❌ | ❌ | ✅ |
 
 ---
 
-## 10. Flujo de procesamiento de minutas
+## 11. Flujo de procesamiento de minutas
 
-### Modo producción (con backend + Groq)
 ```
-1. Admin pega texto en /procesador → POST /procesar-reunion
-2. Backend llama a Groq API (llama-3.3-70b-versatile, json_object)
-3. IA retorna JSON: { id_proyecto, resumen, tareas[] }
-4. Backend valida id_proyecto contra lista de 37 IDs válidos
-5. Inserta en meetings + tasks en MySQL
-6. Frontend muestra: "✅ X tareas creadas en proyecto Y"
-```
+1. Admin sube PDF/DOCX o pega texto en /procesador
+2. Si archivo: POST /upload/texto → extrae texto (mammoth/pdf-parse)
+3. POST /procesar-reunion → Google Gemini o Groq Llama 3.3
+4. IA devuelve JSON: { id_proyecto, resumen, tareas[] }
+5. Backend valida id_proyecto contra lista de IDs válidos (fallback: "1111")
+6. Inserta en meetings + tasks (estado: "Pendiente Revisión")
+7. Socket: emitTaskCreated() → cola de revisión se actualiza en todos los admins
 
-### Modo mock (frontend sin backend)
-```
-1. Admin pega texto → simula delay 1.4s
-2. Frontend analiza palabras clave del texto:
-   - informe/reporte → tarea de informe
-   - paciente/visita → seguimiento pacientes
-   - consentimiento/crf → gestión documental
-   - base de datos/ctms → actualización DB
-   - reunión/comité → preparación reunión
-   - farmacia/medicamento → control de medicamentos
-   - protocolo/ética/irb → gestión regulatoria
-3. Detecta urgencia ("urgente", "hoy", "asap") → prioridad Alta
-4. Detecta proyecto por ID o nombre en el texto
-5. Asigna el responsable pre-seleccionado
-6. Carga StagingContext con las tareas extraídas
+── REVISIÓN ──
+8. Admin revisa en /revision: edita campos si necesario
+9. Aprobar tarea:
+   - UPDATE estado_tarea → "Pendiente"
+   - INSERT db_notifications (responsable + admins)
+   - emitNotifAlert() → badge instantáneo
+   - emitTaskCreated() → aparece en Kanban de todos
+   - queueApprovedTask() → email consolidado al responsable
+10. Rechazar: DELETE tarea
 
-── STAGING AREA ──
-7. Admin revisa cada tarjeta editando si es necesario
-8. Aprobar una tarea:
-   - TaskStoreContext.createTask() → aparece en Kanban
-   - NotificationContext.addNotification() → badge en campana
-   - Toast "✅ Tarea aprobada y asignada a [Nombre]"
-9. Descartar → removeTask() del staging
-10. "Aprobar todo" → procesa todas en secuencia
+── KANBAN (tiempo real) ──
+11. Responsable mueve tarea → PATCH /tareas/:id/status
+    - emitTaskUpdated({ id, status }) → tablero de todos se actualiza
+12. Admin escribe nota → emit new_note al room task_{id}
+    - Chat del responsable se actualiza al instante
 ```
 
 ---
 
-## 11. Configuración y variables de entorno
+## 12. Docker — Despliegue
 
-### Backend — `backend/.env`
-```bash
-# Base de datos MySQL (acceso por túnel SSH)
-DB_HOST=127.0.0.1
-DB_PORT=3307
-DB_USER=tu_usuario_mysql
-DB_PASS=tu_contraseña_mysql
-DB_NAME=nombre_de_la_base
+### Servicios
 
-# JWT
-JWT_SECRET=clave-secreta-segura-en-produccion
+```yaml
+# backend/docker-compose.yml
 
-# Groq IA
-GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+db-tunnel:    # Túnel SSH a MySQL DigitalOcean → localhost:3306
+  healthcheck: nc -z 127.0.0.1 3306
+
+api:          # Express + Socket.io — network_mode: host — puerto 3005
+  depends_on: db-tunnel (healthy)
+
+frontend:     # Next.js standalone — puerto 3001
+  depends_on: api
 ```
 
-> **IMPORTANTE:** El archivo `.env` no debe versionarse. Añade `backend/.env` a `.gitignore`.
-
----
-
-## 12. Instalación y ejecución
-
-### Requisitos
-- Node.js ≥ 18
-- npm ≥ 9
-- Túnel SSH activo hacia el servidor MySQL en el puerto 3307 (solo backend)
-
-### Backend
+### Comandos
 
 ```bash
+# Primer despliegue o después de cambios de código
 cd backend
-npm install
-cp .env.example .env   # edita las variables
-node index.js
+docker compose build --no-cache api frontend
+docker compose up -d
+
+# Solo reiniciar (sin cambios de código)
+docker compose restart
+
+# Logs en vivo
+docker logs alzak_flow_api -f
+docker logs alzak_frontend -f
+
+# Estado
+docker ps
 ```
 
-Salida esperada:
+### Logs de arranque esperados (API)
+
 ```
 🚀 ALZAK FLOW OPERATIVO
-🔗 DB vía túnel SSH en 127.0.0.1:3307
+🔗 DB → localhost:3306
 🔐 Auth JWT activo
-📡 Escuchando en 0.0.0.0:3000
+🔌 Socket.io activo (JWT rooms: alzak_global · user_{email} · task_{id})
+📡 Escuchando en 0.0.0.0:3005
+
+✅ Tablas core OK: users, projects, meetings, tasks
+   Tablas soporte OK: pending_emails, db_notifications, task_notas
+✅ Estructura de DB validada y actualizada
 ```
 
-### Frontend
+---
+
+## 13. Variables de entorno
+
+### `backend/.env`
 
 ```bash
-cd frontend
-npm install
-npm run dev
+# Base de datos MySQL
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=usuario_mysql
+DB_PASS=contraseña_mysql
+DB_NAME=nombre_db
+
+# Servidor en producción
+DB_HOST_PROD=ip.servidor.digitalocean
+DB_USER_PROD=usuario_prod
+DB_PASS_PROD=contraseña_prod
+
+# Túnel SSH
+SSH_HOST=ip.servidor.digitalocean
+SSH_USER=root
+SSH_LOCAL_DB_PORT=3306
+SSH_REMOTE_DB_PORT=3306
+
+# JWT
+JWT_SECRET=clave-secreta-muy-segura
+
+# IA
+GEMINI_API_KEY=AIzaSy...
+GROQ_API_KEY=gsk_...
+
+# Email (nodemailer)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USER=correo@alzak.org
+EMAIL_PASS=app-password
+
+# Backend
+PORT=3005
 ```
 
-Disponible en: `http://192.168.1.221:3001` (o `localhost:3001`)
-
-### Build de producción
-
-```bash
-cd frontend
-npm run build
-npm start
-```
+> **El archivo `.env` no se versiona.** Mantener en servidor o gestor de secretos.
 
 ---
 
-## 13. Acceso remoto y puertos
+## 14. Base de datos
 
-| URL | Descripción |
-|---|---|
-| `http://192.168.1.221:3001` | Frontend (acceso LAN) |
-| `http://192.168.1.221:3001/login` | Página de login |
-| `http://192.168.1.221:3001/dashboard` | Dashboard principal |
-| `http://192.168.1.221:3000/auth/login` | API de autenticación |
-| `http://192.168.1.221:3000/tareas` | API de tareas |
-
-Para exponer externamente usar un proxy inverso (nginx) o servicio de túnel (ngrok, Cloudflare Tunnel).
-
----
-
-## 14. Dev Bypass — credenciales de prueba
-
-En la pantalla de login hay un panel de **Dev Bypass** con acceso inmediato sin backend:
-
-| Rol | Nombre | Email |
-|---|---|---|
-| `superadmin` | Carlos Carranza | carlos.carranza@alzak.org |
-| `admin` | Alejandra Puerto | alejandra.puerto@alzak.org |
-| `user` | Lina Salcedo | lina.salcedo@alzak.org |
-
-El bypass llama a `loginMock(role)` que inyecta un usuario ficticio en `AuthContext` sin hacer petición HTTP.
-
----
-
-## 15. Base de datos
+La migración se ejecuta automáticamente al arrancar el backend. No requiere scripts manuales.
 
 ### Tabla `users`
 ```sql
-correo          VARCHAR(255) PRIMARY KEY
-nombre_completo VARCHAR(255)
+email           VARCHAR(255) PRIMARY KEY
+nombre_complete VARCHAR(255)
 role            ENUM('superadmin', 'admin', 'user')
-password_hash   VARCHAR(255)   -- bcrypt
-activo          TINYINT(1)     -- 1 = activo
+password_hash   VARCHAR(255)          -- bcrypt
+created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+```
+
+### Tabla `projects`
+```sql
+id_proyecto     VARCHAR(50) PRIMARY KEY
+nombre_proyecto VARCHAR(255)
+empresa         VARCHAR(255)
+financiador     VARCHAR(255)
+estado          VARCHAR(50) DEFAULT 'Activo'
+created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ```
 
 ### Tabla `meetings`
 ```sql
-id              INT AUTO_INCREMENT PRIMARY KEY
-id_proyecto     VARCHAR(50)    -- uno de los 37 IDs válidos
+id                INT AUTO_INCREMENT PRIMARY KEY
+id_proyecto       VARCHAR(50)
 resumen_ejecutivo TEXT
-texto_original  LONGTEXT
-created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+texto_original    LONGTEXT
+created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ```
 
 ### Tabla `tasks`
 ```sql
-id                   INT AUTO_INCREMENT PRIMARY KEY
-id_meeting           INT REFERENCES meetings(id)
-id_proyecto          VARCHAR(50)
-tarea_descripcion    TEXT
-responsable_nombre   VARCHAR(255)
-responsable_correo   VARCHAR(255)
-prioridad            ENUM('Alta', 'Media', 'Baja')
-status               ENUM('Pendiente', 'En Proceso', 'Completada') DEFAULT 'Pendiente'
-fecha_entrega        DATE
-created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+id                 INT AUTO_INCREMENT PRIMARY KEY
+id_meeting         INT REFERENCES meetings(id)
+id_proyecto        VARCHAR(50)
+tarea_descripcion  TEXT
+responsable_nombre VARCHAR(255)
+responsable_correo VARCHAR(255)
+prioridad          ENUM('Alta', 'Media', 'Baja') DEFAULT 'Media'
+estado_tarea       VARCHAR(50) DEFAULT 'Pendiente Revisión'
+fecha_inicio       DATE
+fecha_entrega      DATE
+created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ```
 
-### IDs de proyecto válidos (37 proyectos)
-```
-25923, 2424, EXTERNO-1, 5024, 6124, EXTERNO-2, 6524, 0124, 0424, 2924,
-3524, 0325, 1121, 1022, 1522, 1022-1, 1922, 2822, 0925, 1111, 1125,
-0425, 1525, 2625, 6024, 0525, 1625, 2125, 2225, 1025, 2025, 1925,
-0725, 3425, 4125, 3825, 0326
+### Tabla `db_notifications`
+```sql
+id                  INT AUTO_INCREMENT PRIMARY KEY
+tipo                VARCHAR(50)          -- asignacion | auditoria | nota | completada | ...
+titulo              VARCHAR(255)
+mensaje             TEXT
+id_tarea            INT
+id_meeting          INT
+destinatario_correo VARCHAR(255)         -- NULL = broadcast a admins
+leido               TINYINT(1) DEFAULT 0
+created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ```
 
-> `1111` = proyecto por defecto cuando la IA no puede identificar el proyecto
+### Tabla `task_notas`
+```sql
+id              INT AUTO_INCREMENT PRIMARY KEY
+id_tarea        INT NOT NULL
+usuario_correo  VARCHAR(255) NOT NULL
+usuario_nombre  VARCHAR(255) NOT NULL
+mensaje         TEXT NOT NULL
+created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+INDEX idx_tarea (id_tarea)
+```
+
+### Tabla `pending_emails`
+```sql
+id                  INT AUTO_INCREMENT PRIMARY KEY
+destinatario_correo VARCHAR(255)
+destinatario_nombre VARCHAR(255)
+subject             VARCHAR(255)
+body_html           TEXT
+sent                TINYINT(1) DEFAULT 0
+created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+```
 
 ---
 
-## 16. Historial de versiones / fases
+## 15. Dev Bypass — credenciales de prueba
 
-### v1.0 — Commit `dea24c3`
-Backup inicial: backend Express + frontend Next.js básico.
+En la pantalla de login hay un panel **Dev Bypass** para desarrollo sin backend:
 
-### v2.0 — Fases 2–5 — Commit `bd42f3f`
+| Rol | Nombre | Email |
+|-----|--------|-------|
+| `superadmin` | Carlos Carranza | c.carranza@alzak.org |
+| `admin` | Alejandra Puerto | a.puerto@alzak.org |
+| `user` | Lina Salcedo | l.salcedo@alzak.org |
 
-**Fase 2 — Dashboard profesional RBAC:**
-- Sidebar colapsable desktop, bottom tab bar mobile
-- Sistema RBAC con jerarquía `superadmin > admin > user`
-- Dev Bypass con 3 roles en página de login
-- Audit Log `/admin/logs` con System Health widget
+Llama a `loginMock(role)` → inyecta usuario en `AuthContext` sin petición HTTP.
 
-**Fase 3 — Kanban interactivo + métricas:**
-- Kanban con swimlanes por proyecto (admin) y vista personal (user)
-- Chips de estado inline sin abrir modal
-- Alertas de deadline urgencia (≤ 2 días) y vencida
-- Historial de tareas completadas agrupado por fecha
-- Dashboard con gráficas Recharts (BarChart + PieChart) cargadas con `next/dynamic`
-- CRUD de usuarios completo con toggle activo/inactivo
-- `TaskModal` con contexto IA, notas de seguimiento (Ctrl+Enter), Escape para cerrar
+---
 
-**Fase 4 — Comunicación, proyectos y mobile:**
-- `NotificationCenter`: campana con badge en sidebar, panel con animación
-- `/notas`: panel chat bidireccional por tarea, admin ve todos
-- `/proyectos`: CRUD de 41 proyectos, filtros por estado, tabla desktop / cards mobile
-- `/perfil`: resumen de actividad, tasa de completado, tareas recientes
-- `NewTaskModal`: selector de proyectos activos, buscador de usuarios, prioridad, fechas
-- Toast system: 4 tipos, auto-dismiss 4500ms
-- Mobile-first: drawer lateral, bottom tabs, header con hamburger + avatar
+## 16. Historial de versiones
 
-**Fase 5 — Staging Area IA:**
-- Procesador reescrito en 2 pasos con stepper visual
-- `StagingContext`: estado global de tareas pendientes de validación
-- Tarjetas editables inline: descripción, responsable, prioridad, fecha, estado inicial
-- Flujo completo: aprobar → Kanban + notificación + toast
-- Proyectos detectados automáticamente por ID/nombre en el texto
-- Palabras clave para extracción: informe, visita, consentimiento, farmacia, protocolo, etc.
-- Panel de notificaciones con animación `notif-in`, posicionamiento responsive
+### v1.0 — `dea24c3`
+Backup inicial: backend Express monolítico + frontend Next.js básico.
+
+### v2.0 — `bd42f3f` — Fases 2–5
+- Dashboard RBAC con sidebar colapsable y bottom tabs mobile
+- Kanban interactivo con swimlanes, historial y alertas de deadline
+- Staging Area IA en 2 pasos con edición inline
+- CRUD completo de proyectos y usuarios
+- `/notas` — chat centralizado por tarea
+- Sistema de notificaciones con badge y panel animado
+- Toast system 4 tipos
+
+### v3.0 — `b3753db`
+- Migración a **Node.js 22** en Docker
+- Arquitectura modular (`backend/src/`): controllers, routes, services, middleware
+- Auto-migración de DB al arrancar
+- `CLAUDE.md` — constitución de arquitectura (átomos, hooks, Zod)
+
+### v4.0 — `c6d7664` — Socket.io Tiempo Real
+- **Socket.io v4** integrado con autenticación JWT por handshake
+- Rooms: `alzak_global` · `user_{email}` · `task_{id}`
+- **Kanban en tiempo real**: `task_updated` mueve tarjetas en todos los clientes
+- **Chat bidireccional**: `new_note` — burbuja aparece al instante en la contraparte
+- **Typing indicators**: "X está escribiendo…" con debounce 3s
+- **Alertas sonoras**: tono Web Audio API al recibir notificación
+- **Gestión de cuentas en vivo**: `user_force_logout` y `user_role_changed`
+- Nuevo endpoint `PATCH /users/:correo/rol` (solo superadmin)
+- Optimistic UI con estados `_pending` / `_error` en burbujas de chat
+- `/revision` — página dedicada para la cola de aprobación
+- Lista Maestra con export PDF (jsPDF + autoTable)
+- Dashboard BI con KPIs en tiempo real desde API
+- Bugs corregidos: `autoOpenDone` → `useRef`; `approveAll` idempotency lock
 
 ---
 
@@ -773,4 +895,4 @@ Backup inicial: backend Express + frontend Next.js básico.
 
 ---
 
-*Alzak Foundation — Sistema de Investigación Clínica*
+*Alzak Foundation — Sistema de Gestión de Investigación Clínica*

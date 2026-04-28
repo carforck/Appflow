@@ -63,7 +63,7 @@ const TaskStoreContext = createContext<TaskStoreCtx | null>(null);
 function mapApiTask(t: MockTarea): TaskWithMeta {
   return {
     ...t,
-    completedAt: t.status === 'Completada' ? t.fecha_entrega : null,
+    completedAt: t.fecha_finalizacion ?? (t.status === 'Completada' ? t.fecha_entrega : null),
   };
 }
 
@@ -129,11 +129,14 @@ export function TaskStoreProvider({ children }: { children: ReactNode }) {
     if (!socket) return;
 
     // Admin movió / editó una tarea → actualizar la tarjeta en el board sin recargar
-    const handleTaskUpdated = (data: Partial<TaskWithMeta> & { id: number }) => {
+    const handleTaskUpdated = (data: Partial<TaskWithMeta> & { id: number; fecha_finalizacion?: string | null }) => {
       setTasks((prev) => prev.map((t) => {
         if (t.id !== data.id) return t;
         const merged = { ...t, ...data };
-        if (data.status === 'Completada' && !t.completedAt) {
+        // Usar fecha_finalizacion de BD si viene en el payload; si no, derivar del status
+        if ('fecha_finalizacion' in data) {
+          merged.completedAt = data.fecha_finalizacion ?? null;
+        } else if (data.status === 'Completada' && !t.completedAt) {
           merged.completedAt = new Date().toISOString();
         } else if (data.status && data.status !== 'Completada') {
           merged.completedAt = null;
@@ -159,20 +162,28 @@ export function TaskStoreProvider({ children }: { children: ReactNode }) {
   }, [socket, refresh, refreshRevision]);
 
   const updateStatus = useCallback((id: number, status: TareaStatus) => {
-    // Optimistic update — UI reacciona inmediatamente
+    // Optimistic update — UI reacciona inmediatamente con fecha local provisional
     setTasks((prev) =>
       prev.map((t) =>
         t.id === id
-          ? { ...t, status, completedAt: status === 'Completada' ? new Date().toISOString() : t.completedAt }
+          ? { ...t, status, completedAt: status === 'Completada' ? new Date().toISOString() : null }
           : t,
       ),
     );
     setTasksLastModified(Date.now());
-    // Persistir en DB (fire-and-forget — el update optimista ya actualiza la UI)
+    // Persistir en DB y corregir completedAt con el valor real de la BD
     authFetch(`/tareas/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
-    }).catch(() => {/* fallo silencioso — la UI ya reflejó el cambio */});
+    }).then(async (res) => {
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.fecha_finalizacion !== undefined) {
+        setTasks((prev) =>
+          prev.map((t) => t.id === id ? { ...t, completedAt: data.fecha_finalizacion ?? null } : t),
+        );
+      }
+    }).catch(() => {/* fallo silencioso — UI ya refleja el cambio optimista */});
   }, []);
 
   const createTask = useCallback((data: NewTaskData): TaskWithMeta => {

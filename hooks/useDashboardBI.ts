@@ -5,7 +5,7 @@ import { authFetch } from '@/lib/api';
 import { useAuth }         from '@/context/AuthContext';
 import { useProjectStore } from '@/context/ProjectStoreContext';
 import { useTaskStore, TaskWithMeta } from '@/context/TaskStoreContext';
-import { loadPDFLibs, openPDFPreview } from '@/lib/pdfUtils';
+import { loadPDFLibs, openPDFPreview, addPDFLogo } from '@/lib/pdfUtils';
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
 
@@ -179,11 +179,7 @@ export function useDashboardBI() {
     // ── Encabezado ──────────────────────────────────────────────────────────
     doc.setFillColor(26, 54, 93);
     doc.rect(0, 0, pageW, 22, 'F');
-    doc.setFillColor(234, 179, 8);
-    doc.roundedRect(pageW - 26, 5, 12, 12, 2, 2, 'F');
-    doc.setFontSize(8); doc.setFont('helvetica', 'bold');
-    doc.setTextColor(26, 54, 93);
-    doc.text('AF', pageW - 22, 12.5);
+    await addPDFLogo(doc, pageW, 22);
     doc.setFontSize(14); doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
     doc.text('ALZAK FOUNDATION', 14, 10);
@@ -297,11 +293,7 @@ export function useDashboardBI() {
     // ── Encabezado ────────────────────────────────────────────────────────────
     doc.setFillColor(26, 54, 93);
     doc.rect(0, 0, pageW, 22, 'F');
-    doc.setFillColor(234, 179, 8);
-    doc.roundedRect(pageW - 26, 5, 12, 12, 2, 2, 'F');
-    doc.setFontSize(8); doc.setFont('helvetica', 'bold');
-    doc.setTextColor(26, 54, 93);
-    doc.text('AF', pageW - 22, 12.5);
+    await addPDFLogo(doc, pageW, 22);
     doc.setFontSize(15); doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
     doc.text('ALZAK FOUNDATION', 14, 10);

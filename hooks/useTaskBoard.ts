@@ -20,6 +20,7 @@ export interface TaskBoardState {
   filterPrioridad: TareaPrioridad | 'Todas';
   newTaskOpen:     boolean;
   modalTask:       TaskWithMeta | null;
+  chatFocus:       boolean;
   // Acciones
   setTab:             (t: TaskBoardTab) => void;
   setSearchText:      (s: string) => void;
@@ -27,9 +28,10 @@ export interface TaskBoardState {
   openModal:          (t: TaskWithMeta) => void;
   closeModal:         () => void;
   setNewTaskOpen:     (v: boolean) => void;
+  setChatFocus:       (v: boolean) => void;
 }
 
-export function useTaskBoard(initialOpenId?: string | null): TaskBoardState {
+export function useTaskBoard(initialOpenId?: string | null, initialFocus?: string | null): TaskBoardState {
   const { user }    = useAuth();
   const { tasks }   = useTaskStore();
   const router      = useRouter();
@@ -40,9 +42,10 @@ export function useTaskBoard(initialOpenId?: string | null): TaskBoardState {
   const [filterPrioridad, setFilterPrioridad] = useState<TareaPrioridad | 'Todas'>('Todas');
   const [selectedTask,    setSelectedTask]    = useState<TaskWithMeta | null>(null);
   const [newTaskOpen,     setNewTaskOpen]     = useState(false);
+  const [chatFocus,       setChatFocus]       = useState(false);
   const lastOpenedId = useRef<string | null>(null);
 
-  // Auto-open task from URL param (e.g. /tareas?open=42 from a notification click)
+  // Auto-open task from URL param (e.g. /tareas?open=42&focus=notas from a notification click)
   useEffect(() => {
     if (!initialOpenId || tasks.length === 0) return;
     if (lastOpenedId.current === initialOpenId) return;
@@ -51,12 +54,13 @@ export function useTaskBoard(initialOpenId?: string | null): TaskBoardState {
     if (found) {
       lastOpenedId.current = initialOpenId;
       setSelectedTask(found);
+      if (initialFocus === 'notas') setChatFocus(true);
       router.replace('/tareas', { scroll: false });
     }
-  }, [initialOpenId, tasks, router]);
+  }, [initialOpenId, initialFocus, tasks, router]);
 
-  const openModal  = useCallback((t: TaskWithMeta) => setSelectedTask(t), []);
-  const closeModal = useCallback(() => setSelectedTask(null), []);
+  const openModal  = useCallback((t: TaskWithMeta) => { setChatFocus(false); setSelectedTask(t); }, []);
+  const closeModal = useCallback(() => { setSelectedTask(null); setChatFocus(false); }, []);
 
   // Sync modal con la versión más reciente del store
   const modalTask = useMemo(
@@ -84,7 +88,7 @@ export function useTaskBoard(initialOpenId?: string | null): TaskBoardState {
 
   return {
     filtered, activeTasks, completedCount, isAdmin,
-    tab, searchText, filterPrioridad, newTaskOpen, modalTask,
-    setTab, setSearchText, setFilterPrioridad, openModal, closeModal, setNewTaskOpen,
+    tab, searchText, filterPrioridad, newTaskOpen, modalTask, chatFocus,
+    setTab, setSearchText, setFilterPrioridad, openModal, closeModal, setNewTaskOpen, setChatFocus,
   };
 }

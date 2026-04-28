@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTaskStore, TaskWithMeta } from '@/context/TaskStoreContext';
 import { useTaskNotes, TaskNota } from '@/hooks/useTaskNotes';
+import { useNotasUnread } from '@/hooks/useNotasUnread';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatTs(ts: string) {
@@ -156,8 +157,14 @@ export default function NotasPage() {
   const { user }  = useAuth();
   const { tasks } = useTaskStore();
   const isAdmin   = ROLE_RANK[user?.role ?? 'user'] >= 2;
+  const { unreadByTask, clearForTask } = useNotasUnread();
 
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+
+  const handleSelectTask = (id: number) => {
+    setSelectedTaskId(id);
+    if (unreadByTask[id]) clearForTask(id);
+  };
 
   const myTasks = isAdmin
     ? tasks
@@ -191,30 +198,40 @@ export default function NotasPage() {
             {myTasks.length === 0 ? (
               <p className="text-center text-xs text-slate-400 py-8">Sin tareas asignadas</p>
             ) : (
-              myTasks.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setSelectedTaskId(t.id)}
-                  className={`w-full text-left px-4 py-3 border-b border-slate-100/60 dark:border-slate-700/40 transition-colors ${
-                    selectedTaskId === t.id
-                      ? 'bg-alzak-blue/10 dark:bg-alzak-gold/10'
-                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                  }`}
-                >
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 line-clamp-2 leading-snug">
-                    {t.tarea_descripcion}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] text-slate-400">{t.nombre_proyecto}</span>
-                    <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold">
-                      💬
-                    </span>
-                  </div>
-                  {isAdmin && (
-                    <p className="text-[10px] text-slate-400 mt-0.5">{t.responsable_nombre}</p>
-                  )}
-                </button>
-              ))
+              myTasks.map((t) => {
+                const unread = unreadByTask[t.id] ?? 0;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => handleSelectTask(t.id)}
+                    className={`w-full text-left px-4 py-3 border-b border-slate-100/60 dark:border-slate-700/40 transition-colors ${
+                      selectedTaskId === t.id
+                        ? 'bg-alzak-blue/10 dark:bg-alzak-gold/10'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 line-clamp-2 leading-snug flex-1">
+                        {t.tarea_descripcion}
+                      </p>
+                      {unread > 0 && (
+                        <span className="shrink-0 flex items-center gap-0.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+                          🔔 {unread}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] text-slate-400">{t.nombre_proyecto}</span>
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold">
+                        💬
+                      </span>
+                    </div>
+                    {isAdmin && (
+                      <p className="text-[10px] text-slate-400 mt-0.5">{t.responsable_nombre}</p>
+                    )}
+                  </button>
+                );
+              })
             )}
           </div>
         </div>

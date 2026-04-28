@@ -8,7 +8,8 @@ import { TaskBoard }    from '@/components/tareas/TaskBoard';
 function TareasContent() {
   const searchParams = useSearchParams();
   const openId       = searchParams.get('open');
-  const board        = useTaskBoard(openId);
+  const focus        = searchParams.get('focus');
+  const board        = useTaskBoard(openId, focus);
   return <TaskBoard {...board} />;
 }
 

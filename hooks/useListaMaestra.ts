@@ -5,7 +5,7 @@ import { useTaskStore, TaskWithMeta } from '@/context/TaskStoreContext';
 import { useProjectStore } from '@/context/ProjectStoreContext';
 import { useUsuarios } from '@/hooks/useUsuarios';
 import { authFetch } from '@/lib/api';
-import { loadPDFLibs, openPDFPreview } from '@/lib/pdfUtils';
+import { loadPDFLibs, openPDFPreview, addPDFLogo } from '@/lib/pdfUtils';
 import type { TareaStatus, TareaPrioridad, MockProject } from '@/lib/mockData';
 
 export type MaestroChanges = {
@@ -95,14 +95,7 @@ export function useListaMaestra() {
     // ── Banner superior ─────────────────────────────────────────────────────────
     doc.setFillColor(26, 54, 93);
     doc.rect(0, 0, pageW, 20, 'F');
-
-    // Bloque "AF" en dorado
-    doc.setFillColor(234, 179, 8);
-    doc.roundedRect(pageW - 26, 4, 12, 12, 2, 2, 'F');
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(26, 54, 93);
-    doc.text('AF', pageW - 22, 11.5);
+    await addPDFLogo(doc, pageW, 20);
 
     doc.setFontSize(14);
     doc.setTextColor(255, 255, 255);

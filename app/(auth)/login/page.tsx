@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuth, UserRole } from '@/context/AuthContext';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -71,16 +72,38 @@ export default function LoginPage() {
       <div className="relative w-full max-w-sm space-y-4">
         {/* ── Card principal ── */}
         <div className="glass rounded-[24px] p-8 shadow-2xl">
-          {/* Logo */}
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-[20px] bg-alzak-blue dark:bg-alzak-gold flex items-center justify-center text-white dark:text-alzak-dark font-bold text-2xl shadow-lg">
-              AF
+          {/* ── Branding header ── */}
+          <div className="flex items-center gap-4 mb-7">
+            {/* Logo izquierda */}
+            <div className="shrink-0">
+              <Image
+                src="/logo-alzak.webp"
+                alt="Alzak Foundation"
+                width={120}
+                height={60}
+                priority
+                className="object-contain"
+              />
             </div>
-            <h1 className="text-2xl font-bold text-alzak-blue dark:text-white">Alzak Flow</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Inicia sesión con tu cuenta institucional
-            </p>
+            {/* Divisor */}
+            <div className="w-px self-stretch bg-slate-200 dark:bg-slate-700 shrink-0" />
+            {/* Texto derecha */}
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-0.5">
+                by Alzak Foundation
+              </p>
+              <h1 className="text-2xl font-bold text-alzak-blue dark:text-white leading-tight">
+                Alzak Flow
+              </h1>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-tight mt-0.5">
+                Sistema de Gestión de Proyectos
+              </p>
+            </div>
           </div>
+
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+            Inicia sesión con tu cuenta institucional
+          </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

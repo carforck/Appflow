@@ -12,7 +12,7 @@ import type { TareaPrioridad } from '@/lib/mockData';
 export function TaskBoard(props: TaskBoardState) {
   const {
     filtered, activeTasks, completedCount, isAdmin,
-    tab, searchText, filterPrioridad, newTaskOpen, modalTask,
+    tab, searchText, filterPrioridad, newTaskOpen, modalTask, chatFocus,
     setTab, setSearchText, setFilterPrioridad, openModal, closeModal, setNewTaskOpen,
   } = props;
 
@@ -160,7 +160,7 @@ export function TaskBoard(props: TaskBoardState) {
         </div>
       )}
 
-      {modalTask && <TaskModal task={modalTask} onClose={closeModal} />}
+      {modalTask && <TaskModal task={modalTask} onClose={closeModal} focusChat={chatFocus} />}
       {newTaskOpen && <NewTaskModal onClose={() => setNewTaskOpen(false)} />}
     </div>
   );

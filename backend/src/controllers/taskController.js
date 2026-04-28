@@ -10,7 +10,7 @@ const { emitNotifAlert, emitTaskUpdated, emitTaskCreated } = require('../config/
 
 // ── Caché de idempotencia (en memoria, TTL 15 s) ──────────────────────────────
 const idempotencyCache = new Map();
-const IDEMPOTENCY_TTL  = 15_000;
+const IDEMPOTENCY_TTL  = 30_000;
 
 function idempotencyCheck(key) {
   const now = Date.now();
@@ -43,6 +43,7 @@ async function getTareas(req, res) {
         t.estado_tarea AS status,
         t.fecha_inicio,
         t.fecha_entrega,
+        t.fecha_finalizacion,
         m.resumen_ejecutivo AS resumen_meeting
       FROM tasks t
       LEFT JOIN meetings  m ON t.id_meeting  = m.id
@@ -94,14 +95,14 @@ async function crearTarea(req, res) {
            VALUES ('asignacion', 'Nueva tarea asignada', ?, ?, ?)`,
           [`Se te ha asignado una nueva tarea en el Proyecto "${proyNombre}"`, taskId, responsable_correo]
         );
-        emitNotifAlert(responsable_correo);
+        emitNotifAlert(responsable_correo, { tipo: 'asignacion', id_tarea: taskId });
       }
       await pool.query(
         `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
          VALUES ('auditoria', 'Tarea creada', ?, ?, NULL)`,
         [`${responsable_nombre || 'Sin asignar'} tiene una nueva tarea en "${proyNombre}"`, taskId]
       );
-      emitNotifAlert(null);
+      emitNotifAlert(null, { tipo: 'auditoria', id_tarea: taskId });
     } catch (notifErr) {
       console.warn(`⚠️ Notificación no creada para tarea #${taskId}:`, notifErr.message);
     }
@@ -193,13 +194,13 @@ async function aprobarRevision(req, res) {
         `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
          VALUES ('asignacion', 'Nueva tarea asignada', ?, ?, ?)`,
         [`Se te ha asignado una nueva tarea en el Proyecto "${task.nombre_proyecto}"`, task.id, task.responsable_correo]
-      ).then(() => emitNotifAlert(task.responsable_correo)));
+      ).then(() => emitNotifAlert(task.responsable_correo, { tipo: 'asignacion', id_tarea: task.id })));
     }
     notifPromises.push(pool.query(
       `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
        VALUES ('auditoria', 'Tarea aprobada', ?, ?, NULL)`,
       [`${task.responsable_nombre || 'Sin asignar'} tiene una nueva tarea en "${task.nombre_proyecto}"`, task.id]
-    ).then(() => emitNotifAlert(null)));
+    ).then(() => emitNotifAlert(null, { tipo: 'auditoria', id_tarea: task.id })));
 
     Promise.all(notifPromises).catch((e) => console.warn(`⚠️ Notif aprobar #${id}:`, e.message));
 
@@ -248,18 +249,30 @@ async function commitStaging(req, res) {
     return res.status(400).json({ error: 'Se requiere al menos una tarea en el array tareas[]' });
   }
 
+  // Capa 1: caché en memoria (30 s) — bloquea retransmisiones rápidas en el mismo proceso
   if (session_key && idempotencyCheck(session_key)) {
-    console.warn(`⚠️ commit-staging duplicado — session_key=${session_key}`);
-    return res.status(409).json({ error: 'Solicitud duplicada. Espera un momento antes de reintentar.' });
+    console.warn(`⚠️ commit-staging duplicado (caché) — session_key=${session_key}`);
+    return res.status(409).json({ error: 'Solicitud duplicada. Las tareas ya fueron registradas.' });
   }
 
   try {
     const [[proyRow]] = await pool.query('SELECT nombre_proyecto FROM projects WHERE id_proyecto = ?', [batchProject]);
     const proyNombre  = proyRow?.nombre_proyecto ?? batchProject;
 
+    // Capa 2: verificación en BD — protege ante reinicios del proceso o multi-instancia
+    if (session_key) {
+      const [[existing]] = await pool.query(
+        'SELECT id FROM meetings WHERE session_key = ?', [session_key]
+      );
+      if (existing) {
+        console.warn(`⚠️ commit-staging duplicado (DB) — session_key=${session_key} meetingId=${existing.id}`);
+        return res.status(409).json({ error: 'Solicitud duplicada. Las tareas ya fueron registradas.', meetingId: existing.id });
+      }
+    }
+
     const [resMeeting] = await pool.query(
-      'INSERT INTO meetings (id_proyecto, resumen_ejecutivo, texto_original) VALUES (?, ?, ?)',
-      [batchProject, resumen || `Sesión procesador — ${new Date().toLocaleDateString('es-ES')}`, texto || '']
+      'INSERT INTO meetings (session_key, id_proyecto, resumen_ejecutivo, texto_original) VALUES (?, ?, ?, ?)',
+      [session_key || null, batchProject, resumen || `Sesión procesador — ${new Date().toLocaleDateString('es-ES')}`, texto || '']
     );
     const meetingId = resMeeting.insertId;
 
@@ -286,7 +299,7 @@ async function commitStaging(req, res) {
     }
 
     emitTaskCreated(); // Alerta al board de revisión en tiempo real
-    emitNotifAlert(null); // Badge de admins
+    emitNotifAlert(null, { tipo: 'ingesta' });
 
     console.log(`✅ commit-staging → meetingId=${meetingId} tareas=${taskIds.length}`);
     res.status(201).json({ status: 'committed', meetingId, proyecto: id_proyecto, tareas_creadas: taskIds.length, tarea_ids: taskIds });
@@ -342,8 +355,12 @@ async function updateTaskStatus(req, res) {
       return res.status(400).json({ error: `Estado inválido. Valores permitidos: ${VALID.join(', ')}` });
     }
 
+    const fechaSQL = status === 'Completada'
+      ? ', fecha_finalizacion = NOW()'
+      : ', fecha_finalizacion = NULL';
+
     const [result] = await pool.query(
-      `UPDATE tasks SET estado_tarea = ? WHERE id = ? AND estado_tarea != 'Pendiente Revisión'`,
+      `UPDATE tasks SET estado_tarea = ? ${fechaSQL} WHERE id = ? AND estado_tarea != 'Pendiente Revisión'`,
       [status, id]
     );
 
@@ -351,11 +368,18 @@ async function updateTaskStatus(req, res) {
       return res.status(404).json({ error: 'Tarea no encontrada o en estado Pendiente Revisión' });
     }
 
+    // Leer fecha_finalizacion para incluirla en el evento socket
+    let fecha_finalizacion = null;
+    if (status === 'Completada') {
+      const [[row]] = await pool.query('SELECT fecha_finalizacion FROM tasks WHERE id = ?', [id]);
+      fecha_finalizacion = row?.fecha_finalizacion ?? null;
+    }
+
     // Mover la tarjeta en el tablero de todos los clientes conectados
-    emitTaskUpdated({ id: Number(id), status });
+    emitTaskUpdated({ id: Number(id), status, fecha_finalizacion });
 
     console.log(`✅ PATCH /tareas/${id}/status → ${status}`);
-    res.json({ status: 'updated', id: Number(id), estado_tarea: status });
+    res.json({ status: 'updated', id: Number(id), estado_tarea: status, fecha_finalizacion });
   } catch (err) {
     console.error('❌ PATCH /tareas/:id/status:', err.message);
     res.status(500).json({ error: 'Error al actualizar estado', detalle: err.message });

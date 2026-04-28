@@ -16,13 +16,15 @@ function getIo() { return _io; }
 /**
  * Emite `notification_alert` al destinatario correcto.
  * @param {string | null} destinatario_correo  NULL → broadcast a todos los admins (alzak_global)
+ * @param {{ tipo?: string, id_tarea?: number }} [payload]  Contexto para el frontend
  */
-function emitNotifAlert(destinatario_correo) {
+function emitNotifAlert(destinatario_correo, payload = {}) {
   if (!_io) return;
+  const data = { tipo: null, id_tarea: null, ...payload };
   if (destinatario_correo) {
-    _io.to(`user_${destinatario_correo}`).emit('notification_alert');
+    _io.to(`user_${destinatario_correo}`).emit('notification_alert', data);
   } else {
-    _io.to('alzak_global').emit('notification_alert');
+    _io.to('alzak_global').emit('notification_alert', data);
   }
 }
 

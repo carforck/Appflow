@@ -76,12 +76,14 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     if (!user) return;
+    setLoading(true);
     try {
       const res = await authFetch('/api/notifications');
       if (!res.ok) return;
       const data = await res.json();
       setNotifications(data.notifications ?? []);
     } catch { /* non-critical */ }
+    finally { setLoading(false); }
   }, [user]);
 
   // Carga inicial + polling de respaldo (30 s)
@@ -94,7 +96,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // ── Socket: alerta instantánea de nueva notificación ─────────────────────
   useEffect(() => {
     if (!socket) return;
-    const handleAlert = () => {
+    const handleAlert = (_payload?: { tipo?: string | null; id_tarea?: number | null }) => {
       refresh();
       if (document.visibilityState === 'visible') playNotifSound();
     };
@@ -113,6 +115,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setNotifications((prev) => prev.map((n) => ({ ...n, leido: 1 })));
     try {
       await authFetch('/api/notifications/leer-todo', { method: 'PATCH' });
+      refresh(); // confirma con DB para que polling no revierta el estado
     } catch { refresh(); }
   }, [refresh]);
 

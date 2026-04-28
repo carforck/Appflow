@@ -17,6 +17,7 @@ export interface MockTarea {
   status: TareaStatus;
   fecha_inicio?: string;
   fecha_entrega: string;
+  fecha_finalizacion?: string | null;
   resumen_meeting?: string;
 }
 

@@ -29,11 +29,25 @@ const COLUMN_MIGRATIONS = [
     skipIfExists: true,
   },
   {
+    table:  'tasks',
+    column: 'fecha_finalizacion',
+    check:  "SHOW COLUMNS FROM tasks LIKE 'fecha_finalizacion'",
+    sql:    'ALTER TABLE tasks ADD COLUMN fecha_finalizacion DATETIME NULL AFTER estado_tarea',
+    desc:   'Fecha y hora exacta en que la tarea pasó a Completada',
+  },
+  {
     table:  'db_notifications',
     column: 'destinatario_correo',
     check:  "SHOW COLUMNS FROM db_notifications LIKE 'destinatario_correo'",
     sql:    'ALTER TABLE db_notifications ADD COLUMN destinatario_correo VARCHAR(255) NULL AFTER id_tarea',
     desc:   'Filtro RBAC — NULL = visible para admins, email = visible solo al destinatario',
+  },
+  {
+    table:  'meetings',
+    column: 'session_key',
+    check:  "SHOW COLUMNS FROM meetings LIKE 'session_key'",
+    sql:    'ALTER TABLE meetings ADD COLUMN session_key VARCHAR(255) NULL UNIQUE AFTER id',
+    desc:   'Clave de idempotencia — evita duplicar commit-staging',
   },
 ];
 

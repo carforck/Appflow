@@ -16,8 +16,12 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Alzak Flow",
+  title: "Alzak Flow | Gestión de Proyectos",
   description: "Sistema de gestión de proyectos — Alzak Foundation",
+  icons: {
+    icon:    '/logo-alzak.webp',
+    apple:   '/logo-alzak.webp',
+  },
 };
 
 export default function RootLayout({

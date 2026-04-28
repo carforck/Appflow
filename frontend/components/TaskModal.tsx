@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTaskStore, TaskWithMeta } from '@/context/TaskStoreContext';
 import { useTaskNotes } from '@/hooks/useTaskNotes';
+import { useNotasUnread } from '@/hooks/useNotasUnread';
 import { authFetch } from '@/lib/api';
 import { TareaStatus, TareaPrioridad } from '@/lib/mockData';
 
@@ -53,22 +54,40 @@ const PRIORIDAD_CFG: Record<TareaPrioridad, { cls: string; activeCls: string; do
 const ALL_STATUSES:    TareaStatus[]    = ['Pendiente', 'En Proceso', 'Completada'];
 const ALL_PRIORIDADES: TareaPrioridad[] = ['Alta', 'Media', 'Baja'];
 
-interface TaskModalProps { task: TaskWithMeta | null; onClose: () => void }
+interface TaskModalProps { task: TaskWithMeta | null; onClose: () => void; focusChat?: boolean }
 
-export default function TaskModal({ task, onClose }: TaskModalProps) {
+export default function TaskModal({ task, onClose, focusChat }: TaskModalProps) {
   const { user }                        = useAuth();
   const { updateStatus, refresh }       = useTaskStore();
   const { notas, loading: notasLoading, sending, sendNota, bottomRef, typingUser, sendTyping } = useTaskNotes(task?.id ?? null);
+  const { clearForTask }                = useNotasUnread();
   const isAdmin = user?.role === 'superadmin' || user?.role === 'admin';
 
   const [noteText,    setNoteText]    = useState('');
   const [editFecha,   setEditFecha]   = useState('');
   const [savingField, setSavingField] = useState<'prioridad' | 'fecha' | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef    = useRef<HTMLTextAreaElement>(null);
+  const chatRef     = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (task) setEditFecha(task.fecha_entrega ?? '');
   }, [task?.id, task?.fecha_entrega]);
+
+  // Marcar notas de esta tarea como leídas al abrir el modal
+  useEffect(() => {
+    if (task?.id) clearForTask(task.id);
+  // Solo al montar (task.id cambia) — clearForTask es estable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id]);
+
+  // Scroll al chat cuando la notificación es de tipo 'nota'
+  useEffect(() => {
+    if (!focusChat || !chatRef.current) return;
+    const t = setTimeout(() => {
+      chatRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [focusChat, task?.id]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -276,7 +295,7 @@ export default function TaskModal({ task, onClose }: TaskModalProps) {
           )}
 
           {/* ── Chat de notas ── */}
-          <div>
+          <div ref={chatRef}>
             <div className="flex items-center justify-between mb-3">
               <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                 💬 Notas de seguimiento

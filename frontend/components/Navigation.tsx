@@ -1,6 +1,7 @@
 "use client";
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth, UserRole } from '@/context/AuthContext';
@@ -234,15 +235,19 @@ export default function Navigation() {
         {/* ── Logo + Toggle ── */}
         <div className={`mb-8 flex items-center ${collapsed ? 'justify-center' : 'justify-between px-1'}`}>
           {!collapsed && (
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 shrink-0 rounded-[10px] bg-alzak-blue dark:bg-alzak-gold flex items-center justify-center text-white dark:text-alzak-dark font-bold text-xs shadow">
-                AF
-              </div>
+            <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0 hover:opacity-80 transition-opacity">
+              <Image
+                src="/logo-alzak.webp"
+                alt="Alzak Foundation"
+                width={60}
+                height={30}
+                className="shrink-0 object-contain rounded-[8px]"
+              />
               <div className="min-w-0">
                 <p className="font-bold text-alzak-blue dark:text-white text-sm leading-tight truncate">Alzak Flow</p>
                 <p className="text-[10px] text-slate-400 leading-tight">v1.0 · Foundation</p>
               </div>
-            </div>
+            </Link>
           )}
           <button
             onClick={toggle}
@@ -256,9 +261,15 @@ export default function Navigation() {
         {/* ── Collapsed: mini logo ── */}
         {collapsed && (
           <div className="mb-6 flex justify-center">
-            <div className="w-8 h-8 rounded-[10px] bg-alzak-blue dark:bg-alzak-gold flex items-center justify-center text-white dark:text-alzak-dark font-bold text-xs shadow">
-              AF
-            </div>
+            <Link href="/dashboard" className="hover:opacity-80 transition-opacity" title="Ir al Dashboard">
+              <Image
+                src="/logo-alzak.webp"
+                alt="Alzak Foundation"
+                width={44}
+                height={22}
+                className="object-contain rounded-[6px]"
+              />
+            </Link>
           </div>
         )}
 
@@ -275,31 +286,23 @@ export default function Navigation() {
         {/* ── Footer: notificaciones + usuario ── */}
         <div className={`pt-4 border-t border-slate-200 dark:border-slate-700/50 space-y-2`}>
           {/* Bell de notificaciones */}
-          <div className="relative">
-            <button
-              onClick={() => setNotifOpen((o) => !o)}
-              title="Notificaciones"
-              className={`w-full flex items-center gap-3 rounded-[12px] text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors ${
-                collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
-              }`}
-            >
-              <div className="relative shrink-0">
-                {Icon.bell}
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center leading-none">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </div>
-              {!collapsed && <span>Notificaciones</span>}
-            </button>
-            {/* Desktop: aparece a la derecha del sidebar */}
-            {notifOpen && (
-              <div className="absolute left-full bottom-0 ml-3 z-[60]">
-                <NotificationPanel onClose={() => setNotifOpen(false)} />
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => setNotifOpen((o) => !o)}
+            title="Notificaciones"
+            className={`w-full flex items-center gap-3 rounded-[12px] text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors ${
+              collapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2.5'
+            }`}
+          >
+            <div className="relative shrink-0">
+              {Icon.bell}
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center leading-none">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </div>
+            {!collapsed && <span>Notificaciones</span>}
+          </button>
 
           {/* Perfil de usuario */}
           {!collapsed && (
@@ -363,34 +366,32 @@ export default function Navigation() {
           {mobileOpen ? Icon.close : Icon.menu}
         </button>
 
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-[8px] bg-alzak-blue dark:bg-alzak-gold flex items-center justify-center text-white dark:text-alzak-dark font-bold text-[10px]">AF</div>
+        <Link href="/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <Image
+            src="/logo-alzak.webp"
+            alt="Alzak Foundation"
+            width={52}
+            height={26}
+            className="object-contain rounded-[6px]"
+          />
           <span className="font-bold text-alzak-blue dark:text-white text-sm">Alzak Flow</span>
-        </div>
+        </Link>
 
         <div className="flex items-center gap-1">
           {/* Bell mobile */}
-          <div className="relative">
-            <button
-              onClick={() => setNotifOpen((o) => !o)}
-              className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <div className="relative">
-                {Icon.bell}
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center leading-none">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </div>
-            </button>
-            {/* Mobile: fixed debajo del header */}
-            {notifOpen && (
-              <div className="fixed top-14 right-4 z-[90]">
-                <NotificationPanel onClose={() => setNotifOpen(false)} />
-              </div>
-            )}
-          </div>
+          <button
+            onClick={() => setNotifOpen((o) => !o)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <div className="relative">
+              {Icon.bell}
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center leading-none">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </div>
+          </button>
           {/* Avatar → perfil */}
           <Link href="/perfil" className="w-9 h-9 flex items-center justify-center">
             <div className="w-7 h-7 rounded-full bg-alzak-blue dark:bg-alzak-gold flex items-center justify-center text-white dark:text-alzak-dark text-[10px] font-bold">
@@ -419,13 +420,19 @@ export default function Navigation() {
       >
         {/* Header del drawer */}
         <div className="flex items-center justify-between mb-6 px-1">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-[10px] bg-alzak-blue dark:bg-alzak-gold flex items-center justify-center text-white dark:text-alzak-dark font-bold text-xs shadow">AF</div>
+          <Link href="/dashboard" onClick={closeMobile} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+            <Image
+              src="/logo-alzak.webp"
+              alt="Alzak Foundation"
+              width={60}
+              height={30}
+              className="object-contain rounded-[8px]"
+            />
             <div>
               <p className="font-bold text-alzak-blue dark:text-white text-sm leading-tight">Alzak Flow</p>
               <p className="text-[10px] text-slate-400 leading-tight">v1.0 · Foundation</p>
             </div>
-          </div>
+          </Link>
           <button
             onClick={closeMobile}
             className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -498,6 +505,18 @@ export default function Navigation() {
           </Link>
         ))}
       </nav>
+
+      {/* ── Notification panel — una sola instancia, fuera de los ancestros con
+          backdrop-filter para evitar stacking context aislado y dobles listeners ── */}
+      {notifOpen && (
+        <div
+          className={`fixed z-[100] top-14 right-4 lg:top-auto lg:right-auto lg:bottom-4 ${
+            collapsed ? 'lg:left-[80px]' : 'lg:left-[270px]'
+          }`}
+        >
+          <NotificationPanel onClose={() => setNotifOpen(false)} />
+        </div>
+      )}
     </>
   );
 }

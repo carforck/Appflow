@@ -77,16 +77,16 @@ async function addNota(req, res) {
       await pool.query(
         `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
          VALUES ('nota', ?, ?, ?, NULL)`,
-        [`💬 Nota en: ${taskDesc}`, notifMsg, idTarea],
+        [`Nota en: ${taskDesc}`, notifMsg, idTarea],
       );
-      emitNotifAlert(null); // badge de admins se actualiza al instante
+      emitNotifAlert(null, { tipo: 'nota', id_tarea: idTarea });
     } else if (task.responsable_correo) {
       await pool.query(
         `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
          VALUES ('nota', ?, ?, ?, ?)`,
-        [`💬 Respuesta del equipo: ${taskDesc}`, notifMsg, idTarea, task.responsable_correo],
+        [`Respuesta del equipo: ${taskDesc}`, notifMsg, idTarea, task.responsable_correo],
       );
-      emitNotifAlert(task.responsable_correo); // badge del responsable
+      emitNotifAlert(task.responsable_correo, { tipo: 'nota', id_tarea: idTarea });
     }
 
     res.status(201).json({ nota });

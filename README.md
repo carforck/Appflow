@@ -42,17 +42,22 @@ Minuta de reunión (texto libre / DOCX / PDF)
   Cola de Revisión  ──►  Kanban Board
         │                    │
         ▼                    ▼
-  Notificación email    Notas de seguimiento
-  al responsable        (chat en tiempo real)
+  Notificación email    Chat de notas
+  al responsable        (tiempo real)
         │
         ▼
-  Historial / Lista Maestra exportable
+  Panel de Notificaciones ─► deep-link a tarea/chat
+        │
+        ▼
+  Historial / Lista Maestra exportable PDF
 ```
 
 Características principales:
 - **RBAC** completo (`superadmin > admin > user`)
 - **Chat de notas** por tarea con mensajería bidireccional en tiempo real
 - **Socket.io** para sincronización del tablero, alertas sonoras y typing indicators
+- **Panel de notificaciones** con datos reales, RBAC, deep-linking y sonido
+- **Logo corporativo** Alzak Foundation en sidebar, login, favicon y PDFs exportados
 - **Auto-migración de DB** al arrancar (sin migraciones manuales)
 - **Dockerizado** con túnel SSH a MySQL en DigitalOcean
 
@@ -108,6 +113,7 @@ Características principales:
 | next-themes | 0.4.6 | Dark/Light mode |
 | Recharts | 3.8.x | Gráficas BI (BarChart, PieChart, LineChart) |
 | Zod | 4.x | Validación de formularios |
+| sharp | 0.33.x | Optimización de imágenes Next.js standalone |
 
 ### Backend
 | Tecnología | Versión | Uso |
@@ -155,9 +161,9 @@ alzak-flow/
 │       │   └── auth.js             # authMiddleware JWT + requireRole()
 │       ├── controllers/
 │       │   ├── authController.js   # Login + bcrypt
-│       │   ├── taskController.js   # CRUD tareas + emits socket
+│       │   ├── taskController.js   # CRUD tareas + emits socket tipados
 │       │   ├── notesController.js  # Chat de notas + new_note emit
-│       │   ├── notificationController.js  # RBAC notifications
+│       │   ├── notificationController.js  # RBAC notifications + notas-sin-leer
 │       │   ├── userController.js   # CRUD usuarios + force_logout + role_changed
 │       │   ├── projectController.js
 │       │   ├── meetingController.js  # Procesamiento IA (Gemini/Groq)
@@ -168,7 +174,7 @@ alzak-flow/
 │       │   ├── authRoutes.js
 │       │   ├── taskRoutes.js       # /tareas + /:id/notas + /:id/aprobar
 │       │   ├── userRoutes.js       # CRUD + PATCH /:correo/rol
-│       │   ├── notificationRoutes.js
+│       │   ├── notificationRoutes.js  # GET, PATCH leer/leer-todo/notas-sin-leer
 │       │   ├── projectRoutes.js
 │       │   ├── meetingRoutes.js
 │       │   ├── minutasRoutes.js
@@ -183,15 +189,15 @@ alzak-flow/
     ├── next.config.mjs
     ├── tailwind.config.ts
     ├── app/
-    │   ├── layout.tsx              # Root: ThemeProvider + AuthProvider
+    │   ├── layout.tsx              # Root: ThemeProvider + AuthProvider + metadata
     │   ├── page.tsx                # Redirect → /dashboard o /login
-    │   ├── globals.css             # Variables CSS, glass, animaciones
-    │   ├── (auth)/login/           # Login + Dev Bypass (3 roles)
+    │   ├── globals.css             # Variables CSS, glass, animaciones notif-panel
+    │   ├── (auth)/login/           # Login rediseñado: logo + divisor + branding
     │   └── (dashboard)/
     │       ├── layout.tsx          # Auth guard + todos los Providers
     │       ├── dashboard/          # BI: KPIs + gráficas + actividad reciente
     │       ├── procesador/         # Procesador IA (2 pasos) + Staging Area
-    │       ├── tareas/             # Kanban + Historial + Lista Maestra
+    │       ├── tareas/             # Kanban + Historial + Lista Maestra + deep-link ?open=ID&focus=notas
     │       ├── revision/           # Cola de aprobación (admin+)
     │       ├── proyectos/          # CRUD proyectos
     │       ├── usuarios/           # CRUD usuarios + cambio de rol
@@ -200,10 +206,10 @@ alzak-flow/
     │       └── admin/logs/         # Audit Log + System Health
     │
     ├── components/
-    │   ├── Navigation.tsx          # Sidebar · Drawer · Bottom tabs · Notif bell
-    │   ├── TaskModal.tsx           # Detalle tarea: status, prioridad, chat, IA
+    │   ├── Navigation.tsx          # Sidebar · Drawer · Bottom tabs · Notif bell (singleton panel)
+    │   ├── TaskModal.tsx           # Detalle tarea: status, prioridad, chat, focus automático
     │   ├── NewTaskModal.tsx        # Crear tarea manual
-    │   ├── NotificationPanel.tsx   # Panel notificaciones (solo no-leídas + historial)
+    │   ├── NotificationPanel.tsx   # Panel notif: RBAC + deep-link + historial + vacío
     │   ├── Toast.tsx               # Sistema de toasts (4 tipos, auto-dismiss)
     │   ├── ProjectCharts.tsx       # Recharts BarChart + PieChart
     │   ├── ThemeToggle.tsx
@@ -219,7 +225,7 @@ alzak-flow/
     ├── context/
     │   ├── AuthContext.tsx         # JWT + loginMock + socket user events
     │   ├── TaskStoreContext.tsx    # Tasks CRUD + socket task_updated/task_created
-    │   ├── NotificationContext.tsx # Notifs DB + socket alert + Web Audio sound
+    │   ├── NotificationContext.tsx # Notifs DB + polling 30s + socket + Web Audio
     │   ├── ProjectStoreContext.tsx # Proyectos CRUD
     │   ├── StagingContext.tsx      # Tareas pendientes de validación IA
     │   ├── UserStoreContext.tsx    # Usuarios (lista, CRUD)
@@ -228,7 +234,8 @@ alzak-flow/
     ├── hooks/
     │   ├── useSocket.ts            # Singleton socket.io-client con JWT auth
     │   ├── useTaskNotes.ts         # Chat notas: optimistic UI + socket + typing
-    │   ├── useTaskBoard.ts         # Kanban: filtros, modal, auto-open por URL param
+    │   ├── useTaskBoard.ts         # Kanban: filtros, modal, auto-open + chatFocus
+    │   ├── useNotasUnread.ts       # Conteo de notas no leídas por tarea
     │   ├── useRevision.ts          # Cola revisión: approve/reject/approveAll
     │   ├── useProcesador.ts        # Flujo procesador IA 2 pasos
     │   ├── useProyectos.ts         # CRUD proyectos + filtros
@@ -243,7 +250,7 @@ alzak-flow/
     └── lib/
         ├── api.ts                  # authFetch() wrapper JWT + backendBase()
         ├── mockData.ts             # Tipos TypeScript de dominio
-        ├── pdfUtils.ts             # Generación de PDF (jsPDF + autoTable)
+        ├── pdfUtils.ts             # PDF: jsPDF + autoTable + logo WebP→PNG via canvas
         ├── textParser.ts           # Parser de texto para extracción local
         └── prepareTasksForRevision.ts  # Mapeo staging → revision tasks
 ```
@@ -311,6 +318,8 @@ Todos los endpoints protegidos requieren: `Authorization: Bearer <JWT>`
 | GET | `/api/notifications` | todos | Notificaciones del usuario (RBAC) |
 | PATCH | `/api/notifications/:id/leer` | todos | Marcar una como leída |
 | PATCH | `/api/notifications/leer-todo` | todos | Marcar todas como leídas |
+| GET | `/api/notifications/notas-sin-leer` | todos | Conteo de notas no leídas por tarea `{ [id_tarea]: count }` |
+| PATCH | `/api/notifications/leer-tarea/:taskId` | todos | Marcar como leídas todas las notas de una tarea |
 
 ### Stats / BI
 
@@ -344,7 +353,7 @@ El servidor Socket.io corre en el mismo puerto `3005` que la API HTTP. La conexi
 |--------|------|---------|------------------------|
 | `task_updated` | `alzak_global` | `{ id, status?, prioridad?, fecha_entrega?, ... }` | Mueve tarjeta Kanban sin recargar |
 | `task_created` | `alzak_global` | — | Refresca board y cola de revisión |
-| `notification_alert` | `alzak_global` o `user_{email}` | — | Refresca badge + tono Web Audio API |
+| `notification_alert` | `alzak_global` o `user_{email}` | `{ tipo, id_tarea }` | Refresca badge + tono Web Audio API |
 | `new_note` | `task_{id}` | `TaskNota` | Burbuja aparece en el chat del otro usuario |
 | `typing_start` | `task_{id}` (otros) | `{ taskId, userName }` | Muestra "X está escribiendo…" |
 | `typing_stop` | `task_{id}` (otros) | `{ taskId }` | Oculta indicador de escritura |
@@ -369,14 +378,15 @@ Admin UI → PATCH /tareas/:id/status { status: "Completada" }
          → Todos los clientes conectados actualizan la tarjeta en su tablero
 ```
 
-### Flujo: Notificación instantánea
+### Flujo: Notificación instantánea con tipo
 
 ```
 User escribe nota → POST /tareas/:id/notas
                   → INSERT task_notas
-                  → io.emit('new_note', nota) → room task_{id}  [chat en vivo]
+                  → io.emit('new_note', nota) → room task_{id}   [chat en vivo]
                   → INSERT db_notifications
-                  → emitNotifAlert(null)       → alzak_global   [badge admins]
+                  → emitNotifAlert(null, { tipo: 'nota', id_tarea })  → alzak_global
+                  → cliente recibe payload tipado → refresh badge + sonido
 ```
 
 ---
@@ -384,6 +394,7 @@ User escribe nota → POST /tareas/:id/notas
 ## 7. Frontend — Páginas y módulos
 
 ### `/login`
+- Diseño en dos columnas: **logo Alzak Foundation** (WebP transparente) + divisor vertical + branding "Alzak Flow / by Alzak Foundation"
 - Formulario email + contraseña → `POST /auth/login`
 - Token guardado en `localStorage` (`alzak_token`, `alzak_user`)
 - **Dev Bypass** visible en desarrollo: acceso por rol sin backend
@@ -435,13 +446,14 @@ User escribe nota → POST /tareas/:id/notas
 - `+ Nueva tarea` (admin+) → `NewTaskModal`
 - Clic en tarjeta → `TaskModal` completo
 - Auto-apertura por URL param: `/tareas?open=42` (desde notificaciones)
+- Deep-link con focus al chat: `/tareas?open=42&focus=notas` → scroll suave automático al chat
 
 **Tab Historial:**
 - Tareas completadas agrupadas por fecha de completado
 
 **Tab Lista Maestra** _(admin+)_:
 - Vista tabla plana de todas las tareas
-- Exportar a PDF
+- Exportar a PDF (con logo corporativo)
 
 ---
 
@@ -491,20 +503,39 @@ User escribe nota → POST /tareas/:id/notas
 
 ---
 
+### Panel de Notificaciones (campana en sidebar)
+- **Datos reales** de `db_notifications` vía `GET /api/notifications`
+- **RBAC**: `user` ve solo sus asignaciones · `admin/superadmin` ve globales + propias
+- **Tipos con icono**: asignacion 📋 · auditoria 🔍 · ingesta 🤖 · nota 💬 · completada ✅ · sistema ⚙️
+- **Vista por defecto**: solo no leídas. Toggle "Ver historial" para ver leídas
+- **Marcar leída**: clic en ítem → `PATCH /:id/leer` (optimistic UI)
+- **Marcar todas leídas**: botón → `PATCH /leer-todo` (optimistic UI + confirmación DB)
+- **Deep-linking**:
+  - Notificación tipo `nota` → `/tareas?open={id_tarea}&focus=notas` (scroll al chat)
+  - Notificación tipo `asignacion` → `/tareas?open={id_tarea}` (abre el modal)
+- **Tiempo real**: socket `notification_alert { tipo, id_tarea }` → refresh instantáneo + tono Web Audio API
+- **Polling de respaldo**: cada 30 segundos
+- **Badge**: contador con máximo 99+, se resetea al marcar todo leído
+- **Estado vacío**: "Todo al día ✅" cuando no hay pendientes
+- **Singleton pattern**: una sola instancia del panel para evitar conflicto de listeners
+
+---
+
 ## 8. Hooks personalizados
 
 | Hook | Módulo | Responsabilidad |
 |------|--------|-----------------|
 | `useSocket` | Global | Singleton `socket.io-client` con JWT, lazy-init browser-only |
 | `useTaskNotes` | Chat | Fetch notas, optimistic UI, socket `new_note`, typing debounced 3s |
-| `useTaskBoard` | Tareas | Filtros Kanban, modal, auto-open por URL param (`useRef` anti-duplicado) |
+| `useTaskBoard` | Tareas | Filtros Kanban, modal, auto-open URL param, chatFocus para deep-link |
+| `useNotasUnread` | Tareas | Conteo `{ [id_tarea]: count }` de notas no leídas por tarea |
 | `useRevision` | Revisión | Approve/reject/approveAll con idempotency lock (`useRef`) |
 | `useProcesador` | Procesador | Stepper 2 pasos, llamada IA, staging |
 | `useProyectos` | Proyectos | CRUD + filtros + Zod validation |
 | `useUsuarios` | Usuarios | CRUD usuarios + cambio de rol |
 | `useUsuariosPage` | Usuarios | Estado UI: modal, búsqueda, filtros |
 | `useDashboardBI` | Dashboard | KPIs, filtros, datos de stats API |
-| `useListaMaestra` | Tareas | Vista tabla + export PDF (jsPDF + autoTable) |
+| `useListaMaestra` | Tareas | Vista tabla + export PDF (jsPDF + autoTable + logo) |
 
 ---
 
@@ -549,14 +580,16 @@ Escucha via Socket.io:
 {
   notifications: DBNotification[]
   unreadCount: number
+  loading: boolean
   refresh(): Promise<void>
-  markRead(id): Promise<void>           // optimistic
-  markAllRead(): Promise<void>          // optimistic
-  addNotification(n): void
+  markRead(id): Promise<void>           // optimistic → PATCH /:id/leer
+  markAllRead(): Promise<void>          // optimistic → PATCH /leer-todo + confirm DB
+  addNotification(n): void             // local (sin DB)
 }
 ```
 Escucha via Socket.io:
-- `notification_alert` → `refresh()` + tono Web Audio API (si pestaña activa)
+- `notification_alert { tipo, id_tarea }` → `refresh()` + tono Web Audio API (si pestaña activa)
+- Polling de respaldo: `setInterval(refresh, 30_000)`
 
 ### `ProjectStoreContext`
 ```typescript
@@ -626,6 +659,15 @@ superadmin (3) > admin (2) > user (1)
 | Eliminar proyectos | ❌ | ❌ | ✅ |
 | Ver Audit Log | ❌ | ❌ | ✅ |
 
+### Notificaciones por rol
+
+| Tipo | user | admin/superadmin |
+|------|:----:|:----------------:|
+| Asignación (sus tareas) | ✅ | ✅ |
+| Nota de admin en su tarea | ✅ | — |
+| Nota de user en cualquier tarea | — | ✅ |
+| Auditoría / Ingesta IA | ❌ | ✅ |
+
 ---
 
 ## 11. Flujo de procesamiento de minutas
@@ -644,7 +686,7 @@ superadmin (3) > admin (2) > user (1)
 9. Aprobar tarea:
    - UPDATE estado_tarea → "Pendiente"
    - INSERT db_notifications (responsable + admins)
-   - emitNotifAlert() → badge instantáneo
+   - emitNotifAlert(correo, { tipo: 'asignacion', id_tarea }) → badge instantáneo
    - emitTaskCreated() → aparece en Kanban de todos
    - queueApprovedTask() → email consolidado al responsable
 10. Rechazar: DELETE tarea
@@ -652,8 +694,13 @@ superadmin (3) > admin (2) > user (1)
 ── KANBAN (tiempo real) ──
 11. Responsable mueve tarea → PATCH /tareas/:id/status
     - emitTaskUpdated({ id, status }) → tablero de todos se actualiza
-12. Admin escribe nota → emit new_note al room task_{id}
-    - Chat del responsable se actualiza al instante
+12. Admin escribe nota → POST /tareas/:id/notas
+    - emit new_note al room task_{id}   → chat del responsable al instante
+    - INSERT db_notifications para el responsable
+    - emitNotifAlert(responsable, { tipo: 'nota', id_tarea })
+13. Responsable hace clic en notificación tipo 'nota':
+    - Navega a /tareas?open={id_tarea}&focus=notas
+    - TaskModal se abre y hace scroll automático al chat
 ```
 
 ---
@@ -804,12 +851,12 @@ created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ### Tabla `db_notifications`
 ```sql
 id                  INT AUTO_INCREMENT PRIMARY KEY
-tipo                VARCHAR(50)          -- asignacion | auditoria | nota | completada | ...
+tipo                VARCHAR(50)    -- asignacion | auditoria | ingesta | nota | completada | sistema
 titulo              VARCHAR(255)
 mensaje             TEXT
 id_tarea            INT
 id_meeting          INT
-destinatario_correo VARCHAR(255)         -- NULL = broadcast a admins
+destinatario_correo VARCHAR(255)   -- NULL = broadcast a admins (alzak_global)
 leido               TINYINT(1) DEFAULT 0
 created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ```
@@ -854,10 +901,10 @@ Llama a `loginMock(role)` → inyecta usuario en `AuthContext` sin petición HTT
 
 ## 16. Historial de versiones
 
-### v1.0 — `dea24c3`
+### v1.0 — `659c4c6`
 Backup inicial: backend Express monolítico + frontend Next.js básico.
 
-### v2.0 — `bd42f3f` — Fases 2–5
+### v2.0 — `a7cc8c8` — Fases 2–5
 - Dashboard RBAC con sidebar colapsable y bottom tabs mobile
 - Kanban interactivo con swimlanes, historial y alertas de deadline
 - Staging Area IA en 2 pasos con edición inline
@@ -866,13 +913,13 @@ Backup inicial: backend Express monolítico + frontend Next.js básico.
 - Sistema de notificaciones con badge y panel animado
 - Toast system 4 tipos
 
-### v3.0 — `b3753db`
+### v3.0 — `327c5c7`
 - Migración a **Node.js 22** en Docker
 - Arquitectura modular (`backend/src/`): controllers, routes, services, middleware
 - Auto-migración de DB al arrancar
 - `CLAUDE.md` — constitución de arquitectura (átomos, hooks, Zod)
 
-### v4.0 — `c6d7664` — Socket.io Tiempo Real
+### v4.0 — `208318c` — Socket.io Tiempo Real
 - **Socket.io v4** integrado con autenticación JWT por handshake
 - Rooms: `alzak_global` · `user_{email}` · `task_{id}`
 - **Kanban en tiempo real**: `task_updated` mueve tarjetas en todos los clientes
@@ -885,7 +932,25 @@ Backup inicial: backend Express monolítico + frontend Next.js básico.
 - `/revision` — página dedicada para la cola de aprobación
 - Lista Maestra con export PDF (jsPDF + autoTable)
 - Dashboard BI con KPIs en tiempo real desde API
-- Bugs corregidos: `autoOpenDone` → `useRef`; `approveAll` idempotency lock
+
+### v5.0 — `HEAD` — Identidad Visual + Notificaciones Completas
+- **Logo corporativo** (WebP transparente) en sidebar (4 variantes responsive), login, favicon, metadata y PDFs exportados
+- **Login rediseñado**: dos columnas — logo izquierda + divisor + "Alzak Flow / by Alzak Foundation" derecha
+- **PDF con logo**: conversión WebP→PNG via `<canvas>` para compatibilidad con jsPDF (sin fondo negro)
+- **Panel de notificaciones** completamente funcional con datos reales de `db_notifications`:
+  - RBAC: `user` ve sus asignaciones · `admin` ve globales + propias
+  - Vista de no-leídas por defecto + toggle historial de leídas
+  - Marcar individual (`PATCH /:id/leer`) y todas (`PATCH /leer-todo`) con optimistic UI
+  - Badge contador en tiempo real (máx 99+)
+  - Estado vacío "Todo al día ✅"
+  - **Deep-linking**: notificación tipo `nota` → abre tarea y hace scroll al chat; tipo `asignacion` → abre modal de tarea
+  - Socket `notification_alert` actualizado con payload `{ tipo, id_tarea }`
+  - Polling de respaldo cada 30 segundos
+- **Nuevos endpoints**: `GET /notas-sin-leer` · `PATCH /leer-tarea/:taskId`
+- **`useNotasUnread`**: hook para conteo de notas no leídas por tarea
+- **`useTaskBoard`**: soporte para `chatFocus` — scroll automático al chat desde deep-link
+- **`sharp`**: añadido a dependencies para optimización de imágenes en Next.js standalone
+- **Bug fix**: panel de notificaciones como singleton (un listener por instancia) — evita el patrón "ghost listener" donde dos instancias del mismo componente compiten por el mismo `mousedown` en `document`, cerrando el panel antes de que el clic se procese
 
 ---
 

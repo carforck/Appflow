@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useSocket, disconnectSocket } from '@/hooks/useSocket';
+import { backendBase } from '@/lib/api';
 
 export type UserRole = 'superadmin' | 'admin' | 'user';
 
@@ -21,11 +22,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
-
-function backendBase() {
-  if (typeof window === 'undefined') return 'http://localhost:3005';
-  return `http://${window.location.hostname}:3005`;
-}
 
 const MOCK_USERS: Record<UserRole, User> = {
   superadmin: { email: 'c.carranza@alzak.org', nombre: 'Carlos Carranza',  role: 'superadmin' },

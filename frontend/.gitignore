@@ -1,36 +1,39 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
+# ── Dependencias ──────────────────────────────────────────────
 /node_modules
 /.pnp
 .pnp.js
 .yarn/install-state.gz
 
-# testing
-/coverage
-
-# next.js
+# ── Build de Next.js ──────────────────────────────────────────
 /.next/
 /out/
-
-# production
 /build
 
-# misc
+# ── Variables de entorno (NUNCA subir al repo) ────────────────
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# El archivo .example SÍ se sube (es la plantilla sin valores)
+!.env.local.example
+
+# ── Vercel ────────────────────────────────────────────────────
+.vercel
+
+# ── Sistema operativo ─────────────────────────────────────────
 .DS_Store
+Thumbs.db
 *.pem
 
-# debug
+# ── Logs ──────────────────────────────────────────────────────
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
-.env*.local
-
-# vercel
-.vercel
-
-# typescript
+# ── TypeScript ────────────────────────────────────────────────
 *.tsbuildinfo
 next-env.d.ts
+
+# ── Testing ───────────────────────────────────────────────────
+/coverage

@@ -30,6 +30,8 @@ export function backendBase(): string {
   return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3005';
 }
 
+export const _buildTs = '2026-04-29T00:00:00Z';
+
 /**
  * Fetch autenticado: inyecta el JWT de localStorage en cada petición.
  * Si el servidor responde 401, dispara el evento "alzak:unauthorized"

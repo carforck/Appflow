@@ -27,8 +27,7 @@ export async function uploadFileForText(file: File): Promise<string> {
 }
 
 export function backendBase(): string {
-  if (typeof window === 'undefined') return 'http://localhost:3005';
-  return `http://${window.location.hostname}:3005`;
+  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3005';
 }
 
 /**

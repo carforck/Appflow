@@ -22,7 +22,8 @@ export function useSocket(): Socket | null {
 
       if (!_socket || _socket.disconnected) {
         const token = localStorage.getItem('alzak_token') ?? '';
-        _socket = io(`http://${window.location.hostname}:3005`, {
+        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL ?? `http://${window.location.hostname}:3005`;
+        _socket = io(socketUrl, {
           auth:                { token },
           path:                '/socket.io',
           transports:          ['websocket', 'polling'],

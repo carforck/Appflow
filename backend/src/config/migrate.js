@@ -105,6 +105,28 @@ const SUPPORT_TABLES = [
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `,
   },
+  {
+    name: 'activity_logs',
+    sql: `
+      CREATE TABLE IF NOT EXISTS activity_logs (
+        id             INT AUTO_INCREMENT PRIMARY KEY,
+        usuario_correo VARCHAR(255) NOT NULL,
+        usuario_nombre VARCHAR(255) NOT NULL,
+        usuario_role   VARCHAR(50)  NOT NULL DEFAULT 'user',
+        accion         VARCHAR(50)  NOT NULL,
+        modulo         VARCHAR(100) NOT NULL,
+        detalle        TEXT,
+        ip_address     VARCHAR(45),
+        entity_id      INT NULL,
+        entity_type    VARCHAR(50) NULL,
+        created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_created (created_at),
+        INDEX idx_correo  (usuario_correo),
+        INDEX idx_accion  (accion),
+        INDEX idx_modulo  (modulo)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `,
+  },
 ];
 
 /** Correcciones de DEFAULT en columnas ya existentes */

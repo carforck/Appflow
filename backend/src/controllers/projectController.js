@@ -8,7 +8,8 @@
  *   empresa          VARCHAR(100)
  *   financiador      VARCHAR(100)
  */
-const pool = require('../config/db');
+const pool            = require('../config/db');
+const { logActivity } = require('../utils/logActivity');
 
 const SELECT_FIELDS = 'id_proyecto, nombre_proyecto, estado, empresa, financiador';
 
@@ -58,6 +59,13 @@ async function createProject(req, res) {
     );
 
     console.log(`✅ Proyecto creado: ${id_proyecto.trim()} — ${nombre_proyecto.trim()}`);
+    logActivity({
+      correo: req.user.email, nombre: req.user.nombre, role: req.user.role,
+      accion: 'Create', modulo: 'Proyectos',
+      detalle: `Proyecto "${nombre_proyecto.trim()}" (${id_proyecto.trim()}) creado`,
+      ip: req.headers['x-forwarded-for']?.split(',')[0] ?? req.ip,
+      entityType: 'projects',
+    });
     res.status(201).json({ status: 'success', project: created[0] });
   } catch (err) {
     console.error('❌ POST /api/projects:', err.message);
@@ -98,6 +106,13 @@ async function updateProject(req, res) {
     );
 
     console.log(`✏️  Proyecto actualizado: ${id}`);
+    logActivity({
+      correo: req.user.email, nombre: req.user.nombre, role: req.user.role,
+      accion: 'Update', modulo: 'Proyectos',
+      detalle: `Proyecto "${id}" actualizado: ${fields.join(', ').replace(/ = \?/g, '')}`,
+      ip: req.headers['x-forwarded-for']?.split(',')[0] ?? req.ip,
+      entityType: 'projects',
+    });
     res.json({ status: 'success', project: updated[0] });
   } catch (err) {
     console.error('❌ PUT /api/projects/:id:', err.message);
@@ -125,6 +140,13 @@ async function deleteProject(req, res) {
       return res.status(404).json({ error: 'Proyecto no encontrado' });
     }
     console.log(`🗑️  Proyecto eliminado: ${id}`);
+    logActivity({
+      correo: req.user.email, nombre: req.user.nombre, role: req.user.role,
+      accion: 'Delete', modulo: 'Proyectos',
+      detalle: `Proyecto "${id}" eliminado`,
+      ip: req.headers['x-forwarded-for']?.split(',')[0] ?? req.ip,
+      entityType: 'projects',
+    });
     res.json({ status: 'deleted', id_proyecto: id });
   } catch (err) {
     console.error('❌ DELETE /api/projects/:id:', err.message);

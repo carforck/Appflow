@@ -1,9 +1,10 @@
 /**
  * src/controllers/authController.js
  */
-const bcrypt = require('bcryptjs');
-const jwt    = require('jsonwebtoken');
-const pool   = require('../config/db');
+const bcrypt              = require('bcryptjs');
+const jwt                 = require('jsonwebtoken');
+const pool                = require('../config/db');
+const { logActivity }     = require('../utils/logActivity');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'alzak-dev-secret-change-in-prod';
 
@@ -44,6 +45,11 @@ async function login(req, res) {
     );
 
     console.log(`🔓 Login OK: ${u.email} (${u.role}) | IP: ${ip}`);
+    logActivity({
+      correo: u.email, nombre: u.nombre_complete, role: u.role,
+      accion: 'Login', modulo: 'Auth',
+      detalle: `Inicio de sesión exitoso desde IP ${ip}`, ip,
+    });
     res.json({
       token,
       user: { email: u.email, nombre: u.nombre_complete, role: u.role },

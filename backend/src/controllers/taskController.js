@@ -7,6 +7,7 @@
 const pool                  = require('../config/db');
 const { queueApprovedTask } = require('../services/emailService');
 const { emitNotifAlert, emitTaskUpdated, emitTaskCreated } = require('../config/socket');
+const { logActivity }       = require('../utils/logActivity');
 
 // ── Caché de idempotencia (en memoria, TTL 15 s) ──────────────────────────────
 const idempotencyCache = new Map();
@@ -111,6 +112,13 @@ async function crearTarea(req, res) {
     emitTaskCreated();
 
     console.log(`✅ POST /tareas/crear → id=${taskId} proyecto=${id_proyecto}`);
+    logActivity({
+      correo: req.user.email, nombre: req.user.nombre, role: req.user.role,
+      accion: 'Create', modulo: 'Tareas',
+      detalle: `Tarea creada en "${proyNombre}": ${tarea_descripcion.trim().substring(0, 80)}`,
+      ip: req.headers['x-forwarded-for']?.split(',')[0] ?? req.ip,
+      entityId: taskId, entityType: 'tasks',
+    });
     res.status(201).json({ status: 'success', id: taskId });
   } catch (err) {
     console.error('❌ POST /tareas/crear:', err.message);
@@ -379,6 +387,13 @@ async function updateTaskStatus(req, res) {
     emitTaskUpdated({ id: Number(id), status, fecha_finalizacion });
 
     console.log(`✅ PATCH /tareas/${id}/status → ${status}`);
+    logActivity({
+      correo: req.user.email, nombre: req.user.nombre, role: req.user.role,
+      accion: 'Update', modulo: 'Tareas',
+      detalle: `Tarea #${id} → estado cambiado a "${status}"`,
+      ip: req.headers['x-forwarded-for']?.split(',')[0] ?? req.ip,
+      entityId: Number(id), entityType: 'tasks',
+    });
     res.json({ status: 'updated', id: Number(id), estado_tarea: status, fecha_finalizacion });
   } catch (err) {
     console.error('❌ PATCH /tareas/:id/status:', err.message);

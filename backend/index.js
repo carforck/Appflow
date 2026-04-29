@@ -21,6 +21,7 @@ const minutasRoutes      = require('./src/routes/minutasRoutes');
 const emailRoutes        = require('./src/routes/emailRoutes');
 const notificationRoutes = require('./src/routes/notificationRoutes');
 const statsRoutes        = require('./src/routes/statsRoutes');
+const logsRoutes         = require('./src/routes/logsRoutes');
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use('/api/minutas',      minutasRoutes);
 app.use('/api/emails',       emailRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/stats',        statsRoutes);
+app.use('/api/logs',         logsRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
@@ -64,12 +66,32 @@ io.use((socket, next) => {
   }
 });
 
+// ── Usuarios activos (email → { nombre, role, connectedAt, count }) ──────────
+const activeUsers = new Map();
+
+function broadcastActiveUsers() {
+  const list = Array.from(activeUsers.entries()).map(([email, d]) => ({
+    email, nombre: d.nombre, role: d.role, connectedAt: d.connectedAt,
+  }));
+  io.to('superadmins').emit('active_users_update', list);
+}
+
 // ── Gestión de rooms y eventos relay ─────────────────────────────────────────
 io.on('connection', (socket) => {
-  const { email } = socket.user ?? {};
+  const { email, nombre, role } = socket.user ?? {};
   if (email) {
     socket.join('alzak_global');      // room compartido por todos
     socket.join(`user_${email}`);     // room privado del usuario
+    if (role === 'superadmin') socket.join('superadmins');
+
+    // Rastrear usuario activo (múltiples tabs = múltiples sockets)
+    const prev = activeUsers.get(email);
+    activeUsers.set(email, {
+      nombre, role,
+      connectedAt: prev?.connectedAt ?? new Date().toISOString(),
+      count: (prev?.count ?? 0) + 1,
+    });
+    broadcastActiveUsers();
   }
 
   // Rooms de chat de tarea
@@ -82,6 +104,17 @@ io.on('connection', (socket) => {
   });
   socket.on('typing_stop', ({ taskId }) => {
     socket.to(`task_${taskId}`).emit('typing_stop', { taskId });
+  });
+
+  socket.on('disconnect', () => {
+    if (email) {
+      const entry = activeUsers.get(email);
+      if (entry) {
+        if (entry.count <= 1) activeUsers.delete(email);
+        else activeUsers.set(email, { ...entry, count: entry.count - 1 });
+        broadcastActiveUsers();
+      }
+    }
   });
 });
 

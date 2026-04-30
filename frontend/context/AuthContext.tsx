@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useSocket, disconnectSocket } from '@/hooks/useSocket';
-import { backendBase } from '@/lib/api';
+import { backendBase } from '@/lib/api'; // v2
 
 export type UserRole = 'superadmin' | 'admin' | 'user';
 

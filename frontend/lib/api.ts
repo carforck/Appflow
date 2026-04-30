@@ -27,10 +27,9 @@ export async function uploadFileForText(file: File): Promise<string> {
 }
 
 export function backendBase(): string {
-  return process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3005';
+  const url = process.env.NEXT_PUBLIC_API_URL;
+  return url && url.length > 0 ? url : 'http://localhost:3005';
 }
-
-export const _buildTs = '2026-04-30T20:30:00Z';
 
 /**
  * Fetch autenticado: inyecta el JWT de localStorage en cada petición.

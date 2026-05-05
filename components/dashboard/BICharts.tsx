@@ -14,22 +14,6 @@ const COLOR = {
   vencida:    '#ef4444',  // red-500
 };
 
-// ── Tooltip custom ─────────────────────────────────────────────────────────────
-function TooltipBox({ active, payload }: { active?: boolean; payload?: { name: string; value: number; fill: string }[] }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white dark:bg-slate-800 rounded-xl p-3 shadow-lg border border-slate-100 dark:border-slate-700 text-xs space-y-1">
-      {payload.map((p) => (
-        <div key={p.name} className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full" style={{ background: p.fill }} />
-          <span className="text-slate-600 dark:text-slate-300">{p.name}:</span>
-          <span className="font-bold text-slate-800 dark:text-white">{p.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // Mapa nombre → color (fijo, no depende del índice tras .filter)
 const DONUT_ENTRIES: { key: 'pendiente' | 'en_proceso' | 'completada'; label: string }[] = [
   { key: 'pendiente',  label: 'Por Hacer'   },

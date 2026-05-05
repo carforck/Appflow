@@ -59,7 +59,7 @@ export function DonutChart({ data }: { data: { pendiente: number; en_proceso: nu
   const total = entries.reduce((s, e) => s + e.value, 0);
 
   if (total === 0) {
-    return <div className="h-[220px] flex items-center justify-center text-xs text-slate-400">Sin datos</div>;
+    return <div className="h-[180px] flex items-center justify-center text-xs text-slate-400">Sin datos</div>;
   }
 
   const withPct = entries.map((e) => ({
@@ -68,37 +68,48 @@ export function DonutChart({ data }: { data: { pendiente: number; en_proceso: nu
   }));
 
   return (
-    <div className="relative">
-      <ResponsiveContainer width="100%" height={220}>
-        <PieChart>
-          <Pie
-            data={withPct}
-            cx="50%"
-            cy="46%"
-            innerRadius={62}
-            outerRadius={88}
-            paddingAngle={3}
-            dataKey="value"
-            stroke="none"
-          >
-            {withPct.map((e) => (
-              <Cell key={e.name} fill={e.color} />
-            ))}
-          </Pie>
-          <Tooltip content={<DonutTooltip />} />
-          <Legend
-            iconType="circle"
-            iconSize={8}
-            verticalAlign="bottom"
-            formatter={(v) => <span className="text-[11px] text-slate-600 dark:text-slate-300">{v}</span>}
-          />
-        </PieChart>
-      </ResponsiveContainer>
+    /* h-full para crecer cuando el padre tiene altura definida (grid admin);
+       min-h-[220px] como fallback para la vista usuario (sin altura heredada) */
+    <div className="w-full h-full min-h-[220px] flex flex-col items-center gap-3">
 
-      {/* Total en el centro */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ top: '-12px' }}>
-        <span className="text-2xl font-bold text-slate-800 dark:text-white">{total}</span>
-        <span className="text-[10px] text-slate-400 uppercase tracking-wide">tareas</span>
+      {/* Donut — flex-1 + min-h-0 para que escale con el espacio disponible */}
+      <div className="relative w-full flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+            <Pie
+              data={withPct}
+              cx="50%"
+              cy="50%"
+              innerRadius="38%"
+              outerRadius="55%"
+              paddingAngle={3}
+              dataKey="value"
+              stroke="none"
+            >
+              {withPct.map((e) => (
+                <Cell key={e.name} fill={e.color} />
+              ))}
+            </Pie>
+            <Tooltip content={<DonutTooltip />} />
+          </PieChart>
+        </ResponsiveContainer>
+
+        {/* Total centrado sobre el SVG */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-2xl font-bold text-slate-800 dark:text-white">{total}</span>
+          <span className="text-[10px] text-slate-400 uppercase tracking-wide">tareas</span>
+        </div>
+      </div>
+
+      {/* Leyenda HTML — shrink-0 para que no se comprima */}
+      <div className="flex items-center justify-center gap-5 flex-wrap shrink-0 pb-1">
+        {withPct.map((e) => (
+          <div key={e.name} className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: e.color }} />
+            <span className="text-[11px] text-slate-600 dark:text-slate-300">{e.name}</span>
+            <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">{e.pct}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

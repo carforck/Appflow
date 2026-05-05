@@ -471,10 +471,9 @@ export function useDashboardBI() {
   }, [data, filters]);
 
   const empresas = useMemo(() => {
-    const unique = [...new Set(
+    return Array.from(new Set(
       projects.map((p) => p.empresa).filter((e): e is string => !!e)
-    )].sort();
-    return unique;
+    )).sort();
   }, [projects]);
 
   return {

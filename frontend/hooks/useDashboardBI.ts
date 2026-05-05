@@ -14,6 +14,7 @@ export interface DashboardFilters {
   prioridad:  string;
   date_from:  string;
   date_to:    string;
+  empresa:    string;
 }
 
 export interface DashboardKPI {
@@ -75,7 +76,10 @@ export const EMPTY_FILTERS: DashboardFilters = {
   prioridad:  '',
   date_from:  '',
   date_to:    '',
+  empresa:    '',
 };
+
+const LS_EMPRESA_KEY = 'alzak_filter_empresa';
 
 const STATUS_COLOR: Record<string, [number, number, number]> = {
   'Pendiente':  [148, 163, 184],
@@ -95,7 +99,12 @@ export function useDashboardBI() {
   const { projects }           = useProjectStore();
   const { tasks, tasksLastModified } = useTaskStore();
 
-  const [filters,  setFilters]  = useState<DashboardFilters>(EMPTY_FILTERS);
+  const [filters,  setFilters]  = useState<DashboardFilters>(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem(LS_EMPRESA_KEY) : null;
+      return saved ? { ...EMPTY_FILTERS, empresa: saved } : EMPTY_FILTERS;
+    } catch { return EMPTY_FILTERS; }
+  });
   const [data,     setData]     = useState<DashboardData>(EMPTY);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
@@ -115,6 +124,7 @@ export function useDashboardBI() {
       if (f.prioridad)  params.set('prioridad',  f.prioridad);
       if (f.date_from)  params.set('date_from',  f.date_from);
       if (f.date_to)    params.set('date_to',    f.date_to);
+      if (f.empresa)    params.set('empresa',    f.empresa);
       params.set('_ts', Date.now().toString());
 
       const res = await authFetch(`/api/stats/dashboard?${params}`);
@@ -137,9 +147,16 @@ export function useDashboardBI() {
   }, [tasksLastModified, fetchData, filters]);
 
   function patchFilters(patch: Partial<DashboardFilters>) {
-    setFilters((prev) => ({ ...prev, ...patch }));
+    setFilters((prev) => {
+      const next = { ...prev, ...patch };
+      try { localStorage.setItem(LS_EMPRESA_KEY, next.empresa); } catch { /* ignore */ }
+      return next;
+    });
   }
-  function resetFilters() { setFilters(EMPTY_FILTERS); }
+  function resetFilters() {
+    try { localStorage.removeItem(LS_EMPRESA_KEY); } catch { /* ignore */ }
+    setFilters(EMPTY_FILTERS);
+  }
 
   // ── Exportación CSV ────────────────────────────────────────────────────────
   function exportCSV(type: 'vencidas' | 'carga') {
@@ -453,10 +470,18 @@ export function useDashboardBI() {
     openPDFPreview(doc);
   }, [data, filters]);
 
+  const empresas = useMemo(() => {
+    const unique = [...new Set(
+      projects.map((p) => p.empresa).filter((e): e is string => !!e)
+    )].sort();
+    return unique;
+  }, [projects]);
+
   return {
     data, loading, error,
     filters, patchFilters, resetFilters,
     projectOptions: projects.filter((p) => p.id_proyecto !== '1111'),
+    empresas,
     myTasks,
     exportCSV,
     generateReport,

@@ -15,7 +15,7 @@ const pool = require('../config/db');
 
 async function getDashboardStats(req, res) {
   try {
-    const { project_id, prioridad, date_from, date_to } = req.query;
+    const { project_id, prioridad, date_from, date_to, empresa } = req.query;
     const isUser    = req.user.role === 'user';
     const userEmail = req.user.email;
 
@@ -34,8 +34,11 @@ async function getDashboardStats(req, res) {
     if (prioridad)  { conditions.push('t.prioridad = ?');         params.push(prioridad); }
     if (date_from)  { conditions.push('t.fecha_entrega >= ?');    params.push(date_from); }
     if (date_to)    { conditions.push('t.fecha_entrega <= ?');    params.push(date_to); }
+    if (empresa)    { conditions.push('p.empresa = ?');           params.push(empresa); }
 
-    const WHERE = `WHERE ${conditions.join(' AND ')}`;
+    // JOIN requerido para filtrar por empresa y para mostrar nombre_proyecto
+    const JOIN  = 'LEFT JOIN projects p ON t.id_proyecto = p.id_proyecto';
+    const WHERE = `${JOIN} WHERE ${conditions.join(' AND ')}`;
 
     // ── 1. KPIs principales ───────────────────────────────────────────────────
     const [kpiRows] = await pool.query(
@@ -50,6 +53,7 @@ async function getDashboardStats(req, res) {
           / NULLIF(COUNT(*), 0)
         , 1)                                                                  AS cumplimiento
        FROM tasks t ${WHERE}`,
+
       params
     );
 

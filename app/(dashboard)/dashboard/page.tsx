@@ -154,11 +154,13 @@ export default function DashboardPage() {
       {isAdmin && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="glass rounded-[20px] p-5 space-y-3">
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            <div className="glass rounded-[20px] p-5 flex flex-col gap-3">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">
                 Distribución de Estados
               </p>
-              <DonutChart data={data.donut} />
+              <div className="flex-1 min-h-0">
+                <DonutChart data={data.donut} />
+              </div>
             </div>
             <div className="glass rounded-[20px] p-5 space-y-3">
               <div>

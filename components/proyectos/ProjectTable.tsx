@@ -51,7 +51,7 @@ function DeleteCell({ projectId, onDelete, isDeleting }: {
   );
 }
 
-const HEADERS = ['Código', 'Nombre', 'Financiador', 'Estado', ''];
+const HEADERS = ['Código', 'Nombre', 'Empresa', 'Financiador', 'Estado', ''];
 
 export function ProjectTable({ projects, onEdit, onDelete, deletingId }: ProjectTableProps) {
   return (
@@ -89,6 +89,9 @@ export function ProjectTable({ projects, onEdit, onDelete, deletingId }: Project
                 </td>
                 <td className="px-4 py-3 font-medium text-slate-800 dark:text-white">
                   {p.nombre_proyecto}
+                </td>
+                <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-xs">
+                  {p.empresa ?? '—'}
                 </td>
                 <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
                   {p.financiador ?? '—'}

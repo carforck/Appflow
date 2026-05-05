@@ -48,6 +48,15 @@ export function ProjectForm({
       />
 
       <Input
+        label="Empresa"
+        id="empresa"
+        value={form.empresa ?? ''}
+        onChange={(e) => onPatch({ empresa: e.target.value })}
+        placeholder="Ej. ALZAK Foundation"
+        error={fieldErrors.empresa}
+      />
+
+      <Input
         label="Financiador"
         id="financiador"
         value={form.financiador ?? ''}

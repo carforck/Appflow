@@ -9,9 +9,10 @@ import { DashboardFilters }     from '@/components/dashboard/DashboardFilters';
 import { OverdueTasks }         from '@/components/dashboard/OverdueTasks';
 import { MisActividadesTable }  from '@/components/dashboard/MisActividadesTable';
 
-const DonutChart      = dynamic(() => import('@/components/dashboard/BICharts').then((m) => m.DonutChart),      { ssr: false, loading: () => <ChartSkeleton /> });
-const StackedBarChart = dynamic(() => import('@/components/dashboard/BICharts').then((m) => m.StackedBarChart), { ssr: false, loading: () => <ChartSkeleton /> });
-const WorkloadChart   = dynamic(() => import('@/components/dashboard/BICharts').then((m) => m.WorkloadChart),   { ssr: false, loading: () => <ChartSkeleton /> });
+const DonutChart         = dynamic(() => import('@/components/dashboard/BICharts').then((m) => m.DonutChart),         { ssr: false, loading: () => <ChartSkeleton /> });
+const StackedBarChart    = dynamic(() => import('@/components/dashboard/BICharts').then((m) => m.StackedBarChart),    { ssr: false, loading: () => <ChartSkeleton /> });
+const WorkloadChart      = dynamic(() => import('@/components/dashboard/BICharts').then((m) => m.WorkloadChart),      { ssr: false, loading: () => <ChartSkeleton /> });
+const OverdueTasksChart  = dynamic(() => import('@/components/dashboard/BICharts').then((m) => m.OverdueTasksChart),  { ssr: false, loading: () => <ChartSkeleton /> });
 
 function ChartSkeleton() {
   return (
@@ -28,7 +29,7 @@ export default function DashboardPage() {
   const {
     data, loading, error,
     filters, patchFilters, resetFilters,
-    projectOptions, exportCSV, refresh,
+    projectOptions, empresas, exportCSV, refresh,
     myTasks, generateReport, generateAdminReport,
   } = useDashboardBI();
 
@@ -99,6 +100,7 @@ export default function DashboardPage() {
           <DashboardFilters
             filters={filters}
             projectOptions={projectOptions}
+            empresas={empresas}
             onChange={patchFilters}
             onReset={resetFilters}
           />
@@ -176,7 +178,11 @@ export default function DashboardPage() {
           </div>
 
           <div className="glass rounded-[20px] p-5">
-            <OverdueTasks tareas={data.tareas_vencidas} onExport={() => exportCSV('vencidas')} />
+            <OverdueTasks
+              tareas={data.tareas_vencidas}
+              chart={<OverdueTasksChart tareas={data.tareas_vencidas} />}
+              onExport={() => exportCSV('vencidas')}
+            />
           </div>
 
           <div className="glass rounded-[20px] p-5 flex items-center gap-4">

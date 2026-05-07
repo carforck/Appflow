@@ -5,13 +5,26 @@
  * destinatarios específicos después de insertar en db_notifications.
  */
 const pool                  = require('../config/db');
-const { queueApprovedTask } = require('../services/emailService');
+const { queueApprovedTask, sendConsolidatedEmails } = require('../services/emailService');
 const { emitNotifAlert, emitTaskUpdated, emitTaskCreated } = require('../config/socket');
 const { logActivity }       = require('../utils/logActivity');
 
 // ── Caché de idempotencia (en memoria, TTL 15 s) ──────────────────────────────
 const idempotencyCache = new Map();
 const IDEMPOTENCY_TTL  = 30_000;
+
+// ── Debounce para envío consolidado de emails ─────────────────────────────────
+// Espera 10 s tras la última aprobación antes de enviar — consolida lotes
+let emailDebounceTimer = null;
+function scheduleEmailSend() {
+  if (emailDebounceTimer) clearTimeout(emailDebounceTimer);
+  emailDebounceTimer = setTimeout(() => {
+    emailDebounceTimer = null;
+    sendConsolidatedEmails()
+      .then((r) => { if (r.sent > 0) console.log(`📧 Correos enviados: ${r.sent} destinatario(s)`); })
+      .catch((e) => console.error('❌ sendConsolidatedEmails:', e.message));
+  }, 10_000);
+}
 
 function idempotencyCheck(key) {
   const now = Date.now();
@@ -227,7 +240,9 @@ async function aprobarRevision(req, res) {
         proyecto_nombre:   task.nombre_proyecto,
         prioridad:         task.prioridad,
         fecha_entrega:     task.fecha_entrega,
-      }).catch((e) => console.error(`⚠️ queueApprovedTask #${id}:`, e.message));
+      })
+        .then(() => scheduleEmailSend())
+        .catch((e) => console.error(`⚠️ queueApprovedTask #${id}:`, e.message));
     }
 
     res.json({ status: 'approved' });

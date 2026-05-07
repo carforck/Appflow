@@ -249,4 +249,71 @@ async function sendConsolidatedEmails() {
   return result;
 }
 
-module.exports = { queueApprovedTask, sendConsolidatedEmails };
+// ── sendPasswordResetEmail ─────────────────────────────────────────────────────
+
+/**
+ * Envía un correo con el código OTP de 6 dígitos para reseteo de contraseña.
+ */
+async function sendPasswordResetEmail({ email, nombre, code }) {
+  const transport = buildTransport();
+  const from      = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@alzakfoundation.org';
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;background:#f1f5f9;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:#1a365d;padding:28px 32px;">
+            <h1 style="margin:0;font-size:22px;color:#fff;font-weight:700;">Alzak Flow</h1>
+            <p style="margin:6px 0 0;font-size:14px;color:#93c5fd;">Recuperación de contraseña</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;">
+            <p style="margin:0 0 16px;font-size:15px;color:#334155;">
+              Hola <strong>${nombre || email}</strong>, recibimos una solicitud para restablecer tu contraseña.
+            </p>
+            <p style="margin:0 0 24px;font-size:14px;color:#64748b;">
+              Usa el siguiente código de verificación. Expira en <strong>15 minutos</strong>.
+            </p>
+            <div style="text-align:center;margin:24px 0;">
+              <span style="display:inline-block;background:#f1f5f9;border:2px dashed #1a365d;border-radius:12px;
+                           padding:18px 40px;font-size:36px;font-weight:800;letter-spacing:12px;color:#1a365d;">
+                ${code}
+              </span>
+            </div>
+            <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;text-align:center;">
+              Si no solicitaste este cambio, ignora este correo. Tu contraseña no será modificada.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;">
+            <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;">
+              Alzak Foundation · Sistema de Gestión de Proyectos Clínicos
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  if (!transport) {
+    console.log(`📧 [DRY-RUN] Reset OTP para ${email}: ${code}`);
+    return;
+  }
+  await transport.sendMail({
+    from,
+    to:      email,
+    subject: 'Alzak Flow — Código de verificación para restablecer contraseña',
+    html,
+  });
+  console.log(`✅ OTP enviado a ${email}`);
+}
+
+module.exports = { queueApprovedTask, sendConsolidatedEmails, sendPasswordResetEmail };

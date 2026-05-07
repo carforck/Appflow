@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { useTaskStore, NewTaskData } from '@/context/TaskStoreContext';
+import { useTaskStore } from '@/context/TaskStoreContext';
 import { useProjectStore } from '@/context/ProjectStoreContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useToast } from '@/components/Toast';
 import type { TareaPrioridad, MockUser } from '@/lib/mockData';
 import { useUsuarios } from '@/hooks/useUsuarios';
+import { authFetch } from '@/lib/api';
 
 interface Props {
   onClose: () => void;
@@ -22,7 +23,7 @@ const PRIORIDAD_COLOR: Record<TareaPrioridad, string> = {
 const today = () => new Date().toISOString().split('T')[0];
 
 export default function NewTaskModal({ onClose }: Props) {
-  const { createTask } = useTaskStore();
+  const { refresh } = useTaskStore();
   const { projects } = useProjectStore();
   const { addNotification } = useNotifications();
   const { addToast } = useToast();
@@ -78,37 +79,45 @@ export default function NewTaskModal({ onClose }: Props) {
     if (errors[field]) setErrors((prev) => { const next = { ...prev }; delete next[field]; return next; });
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validate() || !selectedUser || !selectedProject) return;
 
     setSubmitting(true);
+    try {
+      const res = await authFetch('/tareas/crear', {
+        method: 'POST',
+        body: JSON.stringify({
+          id_proyecto:        proyectoId,
+          tarea_descripcion:  descripcion.trim(),
+          responsable_nombre: selectedUser.nombre_completo,
+          responsable_correo: selectedUser.correo,
+          prioridad,
+          fecha_inicio:       fechaInicio,
+          fecha_entrega:      fechaEntrega,
+        }),
+      });
 
-    const data: NewTaskData = {
-      id_proyecto:        proyectoId,
-      nombre_proyecto:    selectedProject.nombre_proyecto,
-      tarea_descripcion:  descripcion.trim(),
-      responsable_nombre: selectedUser.nombre_completo,
-      responsable_correo: selectedUser.correo,
-      prioridad,
-      fecha_inicio:       fechaInicio,
-      fecha_entrega:      fechaEntrega,
-    };
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        addToast((err as { error?: string }).error ?? 'Error al crear la tarea', 'error');
+        return;
+      }
 
-    createTask(data);
+      await refresh();
 
-    addNotification({
-      tipo:    'asignacion',
-      titulo:  'Nueva tarea asignada',
-      mensaje: `Se asignó "${descripcion.slice(0, 50)}..." a ${selectedUser.nombre_completo}`,
-    });
-
-    addToast(
-      `Tarea creada · 📧 Email enviado a ${selectedUser.nombre_completo}`,
-      'success',
-    );
-
-    onClose();
+      addNotification({
+        tipo:    'asignacion',
+        titulo:  'Nueva tarea asignada',
+        mensaje: `Se asignó "${descripcion.slice(0, 50)}" a ${selectedUser.nombre_completo}`,
+      });
+      addToast(`Tarea creada y asignada a ${selectedUser.nombre_completo}`, 'success');
+      onClose();
+    } catch {
+      addToast('No se pudo conectar con el servidor', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (

@@ -22,7 +22,7 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      await fetch(`${API}/api/auth/forgot-password`, {
+      await fetch(`${API}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -38,7 +38,7 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      const r = await fetch(`${API}/api/auth/verify-reset-code`, {
+      const r = await fetch(`${API}/auth/verify-reset-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, code }),
@@ -57,7 +57,7 @@ export default function ResetPasswordPage() {
     if (newPass.length < 6)      { setError('Mínimo 6 caracteres'); return; }
     setError(''); setLoading(true);
     try {
-      const r = await fetch(`${API}/api/auth/reset-password`, {
+      const r = await fetch(`${API}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, code, newPassword: newPass }),

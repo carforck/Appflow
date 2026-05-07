@@ -10,6 +10,11 @@
  */
 const pool            = require('../config/db');
 const { logActivity } = require('../utils/logActivity');
+const { getIo }       = require('../config/socket');
+
+const emitProjectChanged = () => {
+  try { getIo()?.to('alzak_global').emit('project_changed'); } catch { /* best-effort */ }
+};
 
 const SELECT_FIELDS = 'id_proyecto, nombre_proyecto, estado, empresa, financiador';
 
@@ -66,6 +71,7 @@ async function createProject(req, res) {
       ip: req.headers['x-forwarded-for']?.split(',')[0] ?? req.ip,
       entityType: 'projects',
     });
+    emitProjectChanged();
     res.status(201).json({ status: 'success', project: created[0] });
   } catch (err) {
     console.error('❌ POST /api/projects:', err.message);
@@ -113,6 +119,7 @@ async function updateProject(req, res) {
       ip: req.headers['x-forwarded-for']?.split(',')[0] ?? req.ip,
       entityType: 'projects',
     });
+    emitProjectChanged();
     res.json({ status: 'success', project: updated[0] });
   } catch (err) {
     console.error('❌ PUT /api/projects/:id:', err.message);
@@ -147,6 +154,7 @@ async function deleteProject(req, res) {
       ip: req.headers['x-forwarded-for']?.split(',')[0] ?? req.ip,
       entityType: 'projects',
     });
+    emitProjectChanged();
     res.json({ status: 'deleted', id_proyecto: id });
   } catch (err) {
     console.error('❌ DELETE /api/projects/:id:', err.message);

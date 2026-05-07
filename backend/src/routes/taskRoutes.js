@@ -4,7 +4,7 @@ const {
   getTareasRevision, actualizarRevision, aprobarRevision, rechazarRevision,
   updateTask, updateTaskStatus,
 } = require('../controllers/taskController');
-const { getNotas, addNota } = require('../controllers/notesController');
+const { getNotas, addNota, getNotasResumen } = require('../controllers/notesController');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 
 const router = Router();
@@ -18,6 +18,9 @@ router.post('/commit-staging', authMiddleware, requireRole('admin', 'superadmin'
 router.patch('/:id',           authMiddleware, requireRole('admin', 'superadmin'), updateTask);
 // Actualización de estado (Kanban drag & drop) — cualquier usuario autenticado
 router.patch('/:id/status',    authMiddleware, updateTaskStatus);
+
+// Resumen de chats (debe ir antes de /:id/notas para evitar conflicto de parámetros)
+router.get('/notas-resumen',   authMiddleware, getNotasResumen);
 
 // Chat de notas por tarea — cualquier usuario autenticado (RBAC en el controller)
 router.get('/:id/notas',       authMiddleware, getNotas);

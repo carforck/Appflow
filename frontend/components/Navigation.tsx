@@ -11,6 +11,7 @@ import ThemeToggle from './ThemeToggle';
 import NotificationPanel from './NotificationPanel';
 import { useTaskStore } from '@/context/TaskStoreContext';
 import { useToast } from '@/components/Toast';
+import { useNotasUnread } from '@/hooks/useNotasUnread';
 
 // ── Iconos SVG inline ──────────────────────────────────────────────────────────
 const Icon = {
@@ -131,6 +132,8 @@ export default function Navigation() {
   const { collapsed, toggle, mobileOpen, toggleMobile, closeMobile } = useSidebar();
   const { unreadCount }     = useNotifications();
   const { revisionCount, newIngestedFiles, clearNewIngestedFiles } = useTaskStore();
+  const { unreadByTask }    = useNotasUnread();
+  const notasUnread         = Object.values(unreadByTask).reduce((s, n) => s + n, 0);
   const { addToast }        = useToast();
   const [notifOpen, setNotifOpen] = useState(false);
 
@@ -186,7 +189,10 @@ export default function Navigation() {
       {navItems.map((item) => {
         const active = isActive(item.href);
         const showLabel = forceExpanded || !collapsed;
-        const badge = item.href === '/revision' && revisionCount > 0 ? revisionCount : null;
+        const badge =
+          item.href === '/revision' && revisionCount > 0 ? revisionCount :
+          item.href === '/notas'    && notasUnread    > 0 ? notasUnread    :
+          null;
         return (
           <Link
             key={item.href}

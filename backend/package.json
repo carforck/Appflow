@@ -2,6 +2,16 @@
   "name": "alzak-flow-api",
   "version": "1.0.0",
   "main": "index.js",
+  "scripts": {
+    "dev":   "nodemon index.js",
+    "start": "node index.js"
+  },
+  "nodemonConfig": {
+    "watch": ["src", "index.js"],
+    "ext":   "js,json",
+    "ignore": ["node_modules"],
+    "delay": "500"
+  },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.15.0",
@@ -16,5 +26,8 @@
     "nodemailer": "^6.10.1",
     "pdf-parse": "^1.1.1",
     "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
   }
 }

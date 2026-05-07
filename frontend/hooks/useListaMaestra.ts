@@ -14,6 +14,9 @@ export type MaestroChanges = {
   responsable_correo?: string;
   fecha_inicio?:       string;
   fecha_entrega?:      string;
+  id_proyecto?:        string;
+  tarea_descripcion?:  string;
+  estado_tarea?:       TareaStatus;
 };
 
 export type ProjectCascade = Pick<MockProject, 'id_proyecto' | 'nombre_proyecto'> & {

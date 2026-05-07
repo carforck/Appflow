@@ -5,16 +5,15 @@ import { authFetch } from '@/lib/api';
 import { useAuth }         from '@/context/AuthContext';
 import { useProjectStore } from '@/context/ProjectStoreContext';
 import { useTaskStore, TaskWithMeta } from '@/context/TaskStoreContext';
-import { loadPDFLibs, openPDFPreview, addPDFLogo } from '@/lib/pdfUtils';
-
-// ── Tipos ──────────────────────────────────────────────────────────────────────
+import { loadPDFLibs, openPDFPreview, addPDFLogo, captureChart } from '@/lib/pdfUtils';
 
 export interface DashboardFilters {
-  project_id: string;
-  prioridad:  string;
-  date_from:  string;
-  date_to:    string;
-  empresa:    string;
+  project_id:  string;
+  prioridad:   string;
+  date_from:   string;
+  date_to:     string;
+  empresa:     string;
+  financiador: string;
 }
 
 export interface DashboardKPI {
@@ -40,6 +39,20 @@ export interface CargaItem {
   nombre:           string;
   vigentes:         number;
   vencidas_activas: number;
+}
+
+export interface VencimientoBucket {
+  label: string;
+  count: number;
+  color: string;
+}
+
+export interface ProgresoProyecto {
+  nombre:        string;
+  completadaPct: number;
+  pendientePct:  number;
+  completadas:   number;
+  total:         number;
 }
 
 export interface TareaVencida {
@@ -72,11 +85,12 @@ const EMPTY: DashboardData = {
 };
 
 export const EMPTY_FILTERS: DashboardFilters = {
-  project_id: '',
-  prioridad:  '',
-  date_from:  '',
-  date_to:    '',
-  empresa:    '',
+  project_id:  '',
+  prioridad:   '',
+  date_from:   '',
+  date_to:     '',
+  empresa:     '',
+  financiador: '',
 };
 
 const LS_EMPRESA_KEY = 'alzak_filter_empresa';
@@ -91,8 +105,6 @@ const PRIO_COLOR: Record<string, [number, number, number]> = {
   'Media': [245, 158, 11],
   'Baja':  [16, 185, 129],
 };
-
-// ── Hook ───────────────────────────────────────────────────────────────────────
 
 export function useDashboardBI() {
   const { user }               = useAuth();
@@ -109,22 +121,87 @@ export function useDashboardBI() {
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
 
-  // Tareas del usuario actual (excluye Pendiente Revisión)
   const myTasks = useMemo<TaskWithMeta[]>(() =>
     tasks.filter((t) => (t.status as string) !== 'Pendiente Revisión'),
     [tasks],
   );
+
+  const prioridad = useMemo(() => {
+    const counts = { Alta: 0, Media: 0, Baja: 0 };
+    for (const t of myTasks) {
+      if (t.prioridad === 'Alta' || t.prioridad === 'Media' || t.prioridad === 'Baja') {
+        counts[t.prioridad]++;
+      }
+    }
+    return counts;
+  }, [myTasks]);
+
+  const vencimientos = useMemo<VencimientoBucket[]>(() => {
+    const now = new Date();
+    const toStr = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = toStr(now);
+    const endOfWeek = new Date(now);
+    endOfWeek.setDate(now.getDate() + (6 - now.getDay()));
+    const endOfNextWeek = new Date(endOfWeek);
+    endOfNextWeek.setDate(endOfWeek.getDate() + 7);
+    const endOfWeekStr     = toStr(endOfWeek);
+    const endOfNextWeekStr = toStr(endOfNextWeek);
+
+    const c = { vencidas: 0, esta_semana: 0, proxima: 0, despues: 0 };
+    for (const t of myTasks) {
+      if (t.status === 'Completada' || !t.fecha_entrega) continue;
+      const f = t.fecha_entrega;
+      if      (f < today)             c.vencidas++;
+      else if (f <= endOfWeekStr)     c.esta_semana++;
+      else if (f <= endOfNextWeekStr) c.proxima++;
+      else                            c.despues++;
+    }
+    return [
+      { label: 'Vencidas',     count: c.vencidas,     color: '#ef4444' },
+      { label: 'Esta sem.',    count: c.esta_semana,  color: '#f59e0b' },
+      { label: 'Próx. sem.',   count: c.proxima,      color: '#3b82f6' },
+      { label: 'Futuras',      count: c.despues,      color: '#10b981' },
+    ];
+  }, [myTasks]);
+
+  const progresoProyectos = useMemo<ProgresoProyecto[]>(() => {
+    const byProject: Record<string, { nombre: string; total: number; completadas: number }> = {};
+    for (const t of myTasks) {
+      if (!byProject[t.id_proyecto]) {
+        byProject[t.id_proyecto] = {
+          nombre: (t.nombre_proyecto || t.id_proyecto).split(' ').slice(0, 3).join(' '),
+          total: 0, completadas: 0,
+        };
+      }
+      byProject[t.id_proyecto].total++;
+      if (t.status === 'Completada') byProject[t.id_proyecto].completadas++;
+    }
+    return Object.values(byProject)
+      .map((p) => {
+        const completadaPct = Math.round((p.completadas / p.total) * 100);
+        return {
+          nombre: p.nombre,
+          completadaPct,
+          pendientePct: 100 - completadaPct,
+          completadas:  p.completadas,
+          total:        p.total,
+        };
+      })
+      .sort((a, b) => b.completadaPct - a.completadaPct);
+  }, [myTasks]);
 
   const fetchData = useCallback(async (f: DashboardFilters) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (f.project_id) params.set('project_id', f.project_id);
-      if (f.prioridad)  params.set('prioridad',  f.prioridad);
-      if (f.date_from)  params.set('date_from',  f.date_from);
-      if (f.date_to)    params.set('date_to',    f.date_to);
-      if (f.empresa)    params.set('empresa',    f.empresa);
+      if (f.project_id)  params.set('project_id',  f.project_id);
+      if (f.prioridad)   params.set('prioridad',   f.prioridad);
+      if (f.date_from)   params.set('date_from',   f.date_from);
+      if (f.date_to)     params.set('date_to',     f.date_to);
+      if (f.empresa)     params.set('empresa',     f.empresa);
+      if (f.financiador) params.set('financiador', f.financiador);
       params.set('_ts', Date.now().toString());
 
       const res = await authFetch(`/api/stats/dashboard?${params}`);
@@ -158,7 +235,6 @@ export function useDashboardBI() {
     setFilters(EMPTY_FILTERS);
   }
 
-  // ── Exportación CSV ────────────────────────────────────────────────────────
   function exportCSV(type: 'vencidas' | 'carga') {
     let rows: string[];
     if (type === 'vencidas') {
@@ -185,36 +261,86 @@ export function useDashboardBI() {
     URL.revokeObjectURL(url);
   }
 
-  // ── Reporte personal PDF (vista previa en nueva pestaña) ───────────────────
+  // Reporte personal PDF (usuario) — captura las 4 graficas + tabla de tareas
   const generateReport = useCallback(async () => {
     if (!user) return;
-    const { JsPDF } = await loadPDFLibs();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const doc: any = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageW = doc.internal.pageSize.getWidth();
 
-    // ── Encabezado ──────────────────────────────────────────────────────────
+    const [{ JsPDF }, donutImg, prioImg, vencImg, progresoImg] = await Promise.all([
+      loadPDFLibs(),
+      captureChart('chart-donut-user'),
+      captureChart('chart-prio-user'),
+      captureChart('chart-venc-user'),
+      captureChart('chart-progreso-user'),
+    ]);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const doc: any  = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageW     = doc.internal.pageSize.getWidth();
+    const pageH     = doc.internal.pageSize.getHeight();
+    const FOOTER_H  = 8;
+    const MARGIN    = 14;
+    const contentW  = pageW - MARGIN * 2;
+    const LABEL_H   = 6;
+    const PAD       = 3;
+    const GAP       = 4;
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    const drawFooter = (pageNum: number) => {
+      doc.setFillColor(26, 54, 93);
+      doc.rect(0, pageH - FOOTER_H, pageW, FOOTER_H, 'F');
+      doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+      doc.setTextColor(200, 220, 255);
+      doc.text('ALZAK FOUNDATION — Documento Confidencial', MARGIN, pageH - 2.5);
+      doc.text(`Página ${pageNum}`, pageW - 22, pageH - 2.5);
+    };
+
+    const drawCell = (x: number, y: number, w: number, h: number, title: string) => {
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x, y, w, h, 3, 3, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(x, y, w, h, 3, 3, 'S');
+      doc.setFontSize(6); doc.setFont('helvetica', 'bold');
+      doc.setTextColor(100, 116, 139);
+      doc.text(title.toUpperCase(), x + w / 2, y + LABEL_H - 1, { align: 'center' });
+    };
+
+    const placeChart = (
+      img: { dataUrl: string; pxW: number; pxH: number } | null,
+      x: number, y: number, cw: number, ch: number,
+    ) => {
+      if (!img) return;
+      const availW = cw - PAD * 2;
+      const availH = ch - LABEL_H - PAD;
+      const ratio  = img.pxH / img.pxW;
+      let iw = availW;
+      let ih = iw * ratio;
+      if (ih > availH) { ih = availH; iw = ih / ratio; }
+      doc.addImage(img.dataUrl, 'PNG', x + (cw - iw) / 2, y + LABEL_H + (availH - ih) / 2, iw, ih);
+    };
+
+    // ── Encabezado ────────────────────────────────────────────────────────────
     doc.setFillColor(26, 54, 93);
     doc.rect(0, 0, pageW, 22, 'F');
     await addPDFLogo(doc, pageW, 22);
     doc.setFontSize(14); doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    doc.text('ALZAK FOUNDATION', 14, 10);
+    doc.text('ALZAK FOUNDATION', MARGIN, 10);
     doc.setFontSize(8); doc.setFont('helvetica', 'normal');
     doc.setTextColor(200, 220, 255);
-    doc.text('Reporte Personal de Actividades', 14, 16);
+    doc.text('Reporte Personal de Actividades', MARGIN, 16);
 
-    // ── Info del usuario ─────────────────────────────────────────────────────
+    // ── Info del usuario ──────────────────────────────────────────────────────
     const fechaGen = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
-    doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold');
     doc.setTextColor(26, 54, 93);
-    doc.text(user.nombre ?? '', 14, 30);
+    doc.text(user.nombre ?? '', MARGIN, 30);
     doc.setFontSize(8); doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 100, 100);
-    doc.text(user.email ?? '', 14, 35);
-    doc.text(`Generado: ${fechaGen}`, 14, 40);
+    doc.text(user.email ?? '', MARGIN, 35);
+    doc.text(`Generado: ${fechaGen}`, MARGIN, 40);
 
-    // ── KPI boxes ────────────────────────────────────────────────────────────
+    // ── KPI boxes ─────────────────────────────────────────────────────────────
     const kpi = data.kpi;
     const kpiItems: { label: string; value: string | number; color: [number, number, number] }[] = [
       { label: 'Vigentes',     value: kpi.vigentes,    color: [26,  54,  93]  },
@@ -222,28 +348,61 @@ export function useDashboardBI() {
       { label: 'Vencidas',     value: kpi.vencidas,    color: [239, 68,  68]  },
       { label: 'Cumplimiento', value: kpi.cumplimiento != null ? `${kpi.cumplimiento}%` : '—', color: [59, 130, 246] },
     ];
-    const boxW = (pageW - 28 - 6) / 4;
+    const boxW = (contentW - (kpiItems.length - 1) * 2) / kpiItems.length;
     kpiItems.forEach((item, i) => {
-      const x = 14 + i * (boxW + 2);
+      const x = MARGIN + i * (boxW + 2);
       doc.setFillColor(...item.color);
-      doc.roundedRect(x, 46, boxW, 16, 2, 2, 'F');
-      doc.setFontSize(13); doc.setFont('helvetica', 'bold');
-      doc.setTextColor(255, 255, 255);
-      doc.text(String(item.value), x + boxW / 2, 54.5, { align: 'center' });
+      doc.roundedRect(x, 45, boxW, 16, 2, 2, 'F');
+      doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+      doc.text(String(item.value), x + boxW / 2, 53.5, { align: 'center' });
       doc.setFontSize(6); doc.setFont('helvetica', 'normal');
-      doc.text(item.label.toUpperCase(), x + boxW / 2, 59, { align: 'center' });
+      doc.text(item.label.toUpperCase(), x + boxW / 2, 58, { align: 'center' });
     });
 
-    // ── Tabla de actividades ─────────────────────────────────────────────────
+    // ── Gráficas — layout en 3 filas ─────────────────────────────────────────
+    let y = 66;
+    const halfW = (contentW - GAP) / 2;
+
+    // Fila 1: Estado (izq) + Prioridad (der)
+    const row1H = 58;
+    drawCell(MARGIN,              y, halfW, row1H, 'Estado de Tareas');
+    drawCell(MARGIN + halfW + GAP, y, halfW, row1H, 'Distribución por Prioridad');
+    placeChart(donutImg, MARGIN,               y, halfW, row1H);
+    placeChart(prioImg,  MARGIN + halfW + GAP, y, halfW, row1H);
+    y += row1H + GAP;
+
+    // Fila 2: Próximos vencimientos (ancho completo)
+    const row2H = 42;
+    drawCell(MARGIN, y, contentW, row2H, 'Próximos Vencimientos · tareas activas');
+    placeChart(vencImg, MARGIN, y, contentW, row2H);
+    y += row2H + GAP;
+
+    // Fila 3: Progreso por proyecto (ancho completo)
+    const row3H = 50;
+    drawCell(MARGIN, y, contentW, row3H, 'Progreso por Proyecto');
+    placeChart(progresoImg, MARGIN, y, contentW, row3H);
+    y += row3H + GAP;
+
+    drawFooter(1);
+
+    // ── Tabla de tareas ───────────────────────────────────────────────────────
     const fmt = (d: string | undefined) => {
       if (!d) return '—';
-      try { return new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }); }
-      catch { return d; }
+      const [yr, m, day] = d.split('-');
+      if (yr && m && day) return `${day}/${m}/${yr.slice(2)}`;
+      return d;
     };
 
+    // Separador de sección antes de la tabla
+    doc.setFillColor(26, 54, 93);
+    doc.rect(MARGIN, y, 3, 5, 'F');
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 54, 93);
+    doc.text('DETALLE DE ACTIVIDADES', MARGIN + 5, y + 3.5);
+    y += 9;
+
     doc.autoTable({
-      startY: 68,
-      head: [['Proyecto', 'Tarea', 'Prioridad', 'Estado', 'Fecha Entrega']],
+      startY: y,
+      head: [['Proyecto', 'Tarea', 'Prioridad', 'Estado', 'Fecha Fin']],
       body: myTasks.map((t) => [
         t.nombre_proyecto ?? t.id_proyecto,
         t.tarea_descripcion,
@@ -251,15 +410,16 @@ export function useDashboardBI() {
         t.status,
         fmt(t.fecha_entrega),
       ]),
-      headStyles:           { fillColor: [26, 54, 93], textColor: [255, 255, 255], fontSize: 8, fontStyle: 'bold' },
-      bodyStyles:           { fontSize: 7.5, cellPadding: 2 },
-      alternateRowStyles:   { fillColor: [248, 250, 252] },
+      headStyles:         { fillColor: [26, 54, 93], textColor: [255, 255, 255], fontSize: 8, fontStyle: 'bold' },
+      bodyStyles:         { fontSize: 7.5, cellPadding: 2.5 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      margin:             { left: MARGIN, right: MARGIN },
       columnStyles: {
-        0: { cellWidth: 35 },
-        1: { cellWidth: 80 },
+        0: { cellWidth: 38 },
+        1: { cellWidth: 'auto' },
         2: { cellWidth: 20 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 25 },
+        3: { cellWidth: 26 },
+        4: { cellWidth: 22 },
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       didParseCell: (d: any) => {
@@ -277,37 +437,29 @@ export function useDashboardBI() {
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       didDrawPage: (d: any) => {
-        const pageH = doc.internal.pageSize.getHeight();
-        doc.setFillColor(26, 54, 93);
-        doc.rect(0, pageH - 8, pageW, 8, 'F');
-        doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-        doc.setTextColor(200, 220, 255);
-        doc.text('ALZAK FOUNDATION — Documento Confidencial', 14, pageH - 3);
-        doc.text(`Página ${d.pageNumber}`, pageW - 25, pageH - 3);
+        if (d.pageNumber === 1) return; // footer ya dibujado en pág 1
+        drawFooter(d.pageNumber);
       },
     });
 
     openPDFPreview(doc);
   }, [user, data, myTasks]);
 
-  // ── Reporte BI admin PDF (landscape, previsualización en nueva pestaña) ──────
+  // Reporte BI admin PDF — solo graficas (landscape A4, una pagina)
   const generateAdminReport = useCallback(async () => {
-    const { JsPDF } = await loadPDFLibs();
+    const [{ JsPDF }, donutImg, stackedImg, workloadImg, overdueImg] = await Promise.all([
+      loadPDFLibs(),
+      captureChart('chart-donut'),
+      captureChart('chart-stacked'),
+      captureChart('chart-workload'),
+      captureChart('chart-overdue'),
+    ]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const doc: any = new JsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
 
-    const footer = (pageNum: number) => {
-      doc.setFillColor(26, 54, 93);
-      doc.rect(0, pageH - 8, pageW, 8, 'F');
-      doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-      doc.setTextColor(200, 220, 255);
-      doc.text('ALZAK FOUNDATION — Dashboard BI · Documento Confidencial', 14, pageH - 3);
-      doc.text(`Página ${pageNum}`, pageW - 20, pageH - 3);
-    };
-
-    // ── Encabezado ────────────────────────────────────────────────────────────
+    // Encabezado
     doc.setFillColor(26, 54, 93);
     doc.rect(0, 0, pageW, 22, 'F');
     await addPDFLogo(doc, pageW, 22);
@@ -318,170 +470,131 @@ export function useDashboardBI() {
     doc.setTextColor(200, 220, 255);
     doc.text('Dashboard de Inteligencia de Negocios', 14, 16);
 
-    // ── Metadatos y filtros activos ───────────────────────────────────────────
+    // Fecha y filtros
     const fechaGen = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
-    doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 100, 100);
-    doc.text(`Generado: ${fechaGen}`, 14, 29);
+    doc.text(`Generado: ${fechaGen}`, 14, 27);
 
     const filtersActive = [
-      filters.project_id && `Proyecto: ${filters.project_id}`,
-      filters.prioridad  && `Prioridad: ${filters.prioridad}`,
-      filters.date_from  && `Desde: ${filters.date_from}`,
-      filters.date_to    && `Hasta: ${filters.date_to}`,
+      filters.empresa     && `Empresa: ${filters.empresa}`,
+      filters.financiador && `Financiador: ${filters.financiador}`,
+      filters.project_id  && `Proyecto: ${filters.project_id}`,
+      filters.prioridad   && `Prioridad: ${filters.prioridad}`,
+      filters.date_from   && `Desde: ${filters.date_from}`,
+      filters.date_to     && `Hasta: ${filters.date_to}`,
     ].filter(Boolean).join(' · ');
     if (filtersActive) {
       doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 54, 93);
-      doc.text(`Filtros: ${filtersActive}`, 14, 34);
+      doc.text(`Filtros: ${filtersActive}`, 14, 32);
     }
 
-    // ── KPI boxes (4 columnas) ────────────────────────────────────────────────
+    // KPI boxes
     const kpi = data.kpi;
     const kpiItems: { label: string; value: string | number; color: [number, number, number] }[] = [
-      { label: 'Total Tareas',  value: kpi.total,       color: [26,  54,  93]  },
-      { label: 'Vigentes',      value: kpi.vigentes,    color: [59,  130, 246] },
-      { label: 'Completadas',   value: kpi.completadas, color: [16,  185, 129] },
-      { label: 'Vencidas',      value: kpi.vencidas,    color: [239, 68,  68]  },
+      { label: 'Total Tareas', value: kpi.total,       color: [26,  54,  93]  },
+      { label: 'Vigentes',     value: kpi.vigentes,    color: [59,  130, 246] },
+      { label: 'Completadas',  value: kpi.completadas, color: [16,  185, 129] },
+      { label: 'Vencidas',     value: kpi.vencidas,    color: [239, 68,  68]  },
+      { label: 'Avance',       value: kpi.cumplimiento != null ? `${kpi.cumplimiento}%` : '—', color: [234, 179, 8] },
     ];
-    const cumplimiento = kpi.cumplimiento != null ? `${kpi.cumplimiento}%` : '—';
-    kpiItems.push({ label: 'Avance', value: cumplimiento, color: [234, 179, 8] });
 
-    const startKPI = filtersActive ? 39 : 34;
-    const boxW = (pageW - 28 - (kpiItems.length - 1) * 2) / kpiItems.length;
+    const startKPI = filtersActive ? 36 : 31;
+    const kpiBoxW  = (pageW - 28 - (kpiItems.length - 1) * 2) / kpiItems.length;
     kpiItems.forEach((item, i) => {
-      const x = 14 + i * (boxW + 2);
+      const x = 14 + i * (kpiBoxW + 2);
       doc.setFillColor(...item.color);
-      doc.roundedRect(x, startKPI, boxW, 18, 2, 2, 'F');
-      doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+      doc.roundedRect(x, startKPI, kpiBoxW, 16, 2, 2, 'F');
+      doc.setFontSize(13); doc.setFont('helvetica', 'bold');
       doc.setTextColor(255, 255, 255);
-      doc.text(String(item.value), x + boxW / 2, startKPI + 10, { align: 'center' });
+      doc.text(String(item.value), x + kpiBoxW / 2, startKPI + 8.5, { align: 'center' });
       doc.setFontSize(6); doc.setFont('helvetica', 'normal');
-      doc.text(item.label.toUpperCase(), x + boxW / 2, startKPI + 15.5, { align: 'center' });
+      doc.text(item.label.toUpperCase(), x + kpiBoxW / 2, startKPI + 13, { align: 'center' });
     });
 
-    // ── Tabla: Tareas Vencidas ────────────────────────────────────────────────
-    const startTbl = startKPI + 23;
-    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-    doc.setTextColor(26, 54, 93);
-    doc.text('Tareas Vencidas', 14, startTbl - 2);
+    // Layout de graficas: asimetrico y con tarjetas
+    const gridY   = startKPI + 19;
+    const colGap  = 5;
+    const rowGap  = 5;
+    const LABEL_H = 7;
+    const PAD     = 3;
+    const totalW  = pageW - 28;
+    const totalH  = pageH - 8 - gridY;
+    const row1H   = Math.round(totalH * 0.52);
+    const row2H   = totalH - rowGap - row1H;
+    // Fila 1 asimetrica: donut cuadrado (37%) | stacked horizontal (63%)
+    const donutW   = Math.round(totalW * 0.37);
+    const stackedW = totalW - colGap - donutW;
+    // Fila 2 simetrica
+    const halfW    = (totalW - colGap) / 2;
 
-    const fmt = (d: string | undefined) => {
-      if (!d) return '—';
-      try { return new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }); }
-      catch { return d; }
+    const drawCell = (x: number, y: number, w: number, h: number, title: string) => {
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(x, y, w, h, 3, 3, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(x, y, w, h, 3, 3, 'S');
+      doc.setFontSize(6.5); doc.setFont('helvetica', 'bold');
+      doc.setTextColor(100, 116, 139);
+      doc.text(title.toUpperCase(), x + w / 2, y + LABEL_H - 1, { align: 'center' });
     };
 
-    if (data.tareas_vencidas.length === 0) {
-      doc.setFontSize(8); doc.setFont('helvetica', 'italic');
-      doc.setTextColor(100, 100, 100);
-      doc.text('Sin tareas vencidas', 14, startTbl + 4);
-    } else {
-      doc.autoTable({
-        startY: startTbl,
-        head: [['ID', 'Proyecto', 'Tarea', 'Responsable', 'Prioridad', 'F. Entrega', 'Días']],
-        body: data.tareas_vencidas.map((t) => [
-          t.id_proyecto,
-          t.nombre_proyecto ?? t.id_proyecto,
-          t.tarea_descripcion,
-          t.responsable_nombre || '—',
-          t.prioridad,
-          fmt(t.fecha_entrega),
-          t.dias_vencida,
-        ]),
-        headStyles:         { fillColor: [239, 68, 68], textColor: [255, 255, 255], fontSize: 7.5, fontStyle: 'bold' },
-        bodyStyles:         { fontSize: 7, cellPadding: 1.8 },
-        alternateRowStyles: { fillColor: [255, 245, 245] },
-        columnStyles: {
-          0: { cellWidth: 18, fontStyle: 'bold' },
-          1: { cellWidth: 40 },
-          2: { cellWidth: 90 },
-          3: { cellWidth: 42 },
-          4: { cellWidth: 18 },
-          5: { cellWidth: 22 },
-          6: { cellWidth: 12, halign: 'center' as const },
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        didParseCell: (d: any) => {
-          if (d.section !== 'body') return;
-          if (d.column.index === 4) {
-            const c = PRIO_COLOR[d.cell.raw as string];
-            if (c) { d.cell.styles.textColor = c; d.cell.styles.fontStyle = 'bold'; }
-          }
-          if (d.column.index === 6 && Number(d.cell.raw) > 7) {
-            d.cell.styles.textColor = [239, 68, 68];
-            d.cell.styles.fontStyle = 'bold';
-          }
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        didDrawPage: (d: any) => footer(d.pageNumber),
-      });
-    }
+    const placeChart = (
+      img: { dataUrl: string; pxW: number; pxH: number } | null,
+      x: number, y: number, cw: number, ch: number,
+    ) => {
+      if (!img) return;
+      const availW = cw - PAD * 2;
+      const availH = ch - LABEL_H - PAD;
+      const ratio  = img.pxH / img.pxW;
+      let iw = availW;
+      let ih = iw * ratio;
+      if (ih > availH) { ih = availH; iw = ih / ratio; }
+      doc.addImage(img.dataUrl, 'PNG', x + (cw - iw) / 2, y + LABEL_H + (availH - ih) / 2, iw, ih);
+    };
 
-    // ── Tabla: Carga laboral ──────────────────────────────────────────────────
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const afterVencidas = (doc as any).lastAutoTable?.finalY ?? startTbl + 10;
-    const startCarga = afterVencidas + 10;
+    const r1y = gridY;
+    const r2y = gridY + row1H + rowGap;
 
-    if (startCarga < pageH - 50) {
-      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-      doc.setTextColor(26, 54, 93);
-      doc.text('Carga Laboral por Responsable', 14, startCarga - 2);
+    drawCell(14,                  r1y, donutW,   row1H, 'Distribucion de Estados');
+    drawCell(14 + donutW + colGap, r1y, stackedW, row1H, 'Eficiencia por Responsable');
+    drawCell(14,                  r2y, halfW,    row2H, 'Carga Laboral');
+    drawCell(14 + halfW + colGap, r2y, halfW,    row2H, 'Tareas Vencidas');
 
-      doc.autoTable({
-        startY: startCarga,
-        head: [['Responsable', 'Vigentes', 'Vencidas Activas', 'Estado']],
-        body: data.cargaLaboral.map((c) => [
-          c.nombre,
-          c.vigentes,
-          c.vencidas_activas,
-          c.vencidas_activas > 0 ? '⚠ Con retrasos' : '✓ Al día',
-        ]),
-        headStyles:         { fillColor: [26, 54, 93], textColor: [255, 255, 255], fontSize: 7.5, fontStyle: 'bold' },
-        bodyStyles:         { fontSize: 7.5, cellPadding: 2 },
-        alternateRowStyles: { fillColor: [248, 250, 252] },
-        columnStyles: {
-          0: { cellWidth: 70 },
-          1: { cellWidth: 25, halign: 'center' as const },
-          2: { cellWidth: 30, halign: 'center' as const },
-          3: { cellWidth: 35 },
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        didParseCell: (d: any) => {
-          if (d.section !== 'body') return;
-          if (d.column.index === 2 && Number(d.cell.raw) > 0) {
-            d.cell.styles.textColor = [239, 68, 68]; d.cell.styles.fontStyle = 'bold';
-          }
-          if (d.column.index === 3) {
-            d.cell.styles.textColor = String(d.cell.raw).startsWith('⚠')
-              ? [245, 158, 11] : [16, 185, 129];
-            d.cell.styles.fontStyle = 'bold';
-          }
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        didDrawPage: (d: any) => footer(d.pageNumber),
-      });
-    }
+    placeChart(donutImg,    14,                   r1y, donutW,   row1H);
+    placeChart(stackedImg,  14 + donutW + colGap, r1y, stackedW, row1H);
+    placeChart(workloadImg, 14,                   r2y, halfW,    row2H);
+    placeChart(overdueImg,  14 + halfW + colGap,  r2y, halfW,    row2H);
 
-    // Footer de la primera página (si no hubo tabla que lo dibujara)
-    if (data.tareas_vencidas.length === 0 && data.cargaLaboral.length === 0) {
-      footer(1);
-    }
+    // Footer
+    doc.setFillColor(26, 54, 93);
+    doc.rect(0, pageH - 8, pageW, 8, 'F');
+    doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+    doc.setTextColor(200, 220, 255);
+    doc.text('ALZAK FOUNDATION — Dashboard BI · Documento Confidencial', 14, pageH - 3);
+    doc.text('Página 1', pageW - 20, pageH - 3);
 
     openPDFPreview(doc);
   }, [data, filters]);
 
-  const empresas = useMemo(() => {
-    return Array.from(new Set(
-      projects.map((p) => p.empresa).filter((e): e is string => !!e)
-    )).sort();
-  }, [projects]);
+  const empresas = useMemo(() =>
+    Array.from(new Set(projects.map((p) => p.empresa).filter((e): e is string => !!e))).sort()
+  , [projects]);
+
+  const financiadores = useMemo(() =>
+    Array.from(new Set(projects.map((p) => (p as { financiador?: string }).financiador).filter((f): f is string => !!f))).sort()
+  , [projects]);
 
   return {
     data, loading, error,
     filters, patchFilters, resetFilters,
     projectOptions: projects.filter((p) => p.id_proyecto !== '1111'),
     empresas,
+    financiadores,
     myTasks,
+    prioridad,
+    vencimientos,
+    progresoProyectos,
     exportCSV,
     generateReport,
     generateAdminReport,

@@ -5,9 +5,9 @@ import NewTaskModal from '@/components/NewTaskModal';
 import { KanbanAdminView, KanbanUserView } from './KanbanViews';
 import { HistorialView }    from './HistorialView';
 import { ListaMaestraView } from './ListaMaestraView';
-import { PRIORIDAD_DOT } from './taskBoardConfig';
+import { PRIORIDAD_DOT, STATUS_CFG, ALL_STATUSES } from './taskBoardConfig';
 import type { TaskBoardState } from '@/hooks/useTaskBoard';
-import type { TareaPrioridad } from '@/lib/mockData';
+import type { TareaPrioridad, TareaStatus } from '@/lib/mockData';
 
 export function TaskBoard(props: TaskBoardState) {
   const {
@@ -18,7 +18,8 @@ export function TaskBoard(props: TaskBoardState) {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
+      {/* Header + Tabs — sticky */}
+      <div className="sticky top-14 lg:top-0 z-20 -mx-4 px-4 pt-4 pb-3 backdrop-blur-md" style={{ background: 'var(--background-sticky, var(--background))' }}>
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-alzak-blue dark:text-white">
@@ -113,6 +114,23 @@ export function TaskBoard(props: TaskBoardState) {
           </div>
         )}
       </div>
+
+        {tab === 'board' && (
+          <div className="grid grid-cols-3 gap-3 mt-3">
+            {ALL_STATUSES.map((s: TareaStatus) => {
+              const cfg   = STATUS_CFG[s];
+              const count = filtered.filter((t) => t.status === s).length;
+              return (
+                <div key={s} className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${cfg.headerCls}`}>
+                  <span className="text-sm">{cfg.icon}</span>
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-100">{cfg.label}</span>
+                  <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cfg.countCls}`}>{count}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>{/* /sticky */}
 
       {/* Contenido */}
       {tab === 'lista' ? (

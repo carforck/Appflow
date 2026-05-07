@@ -4,7 +4,7 @@ import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
 } from 'recharts';
-import type { StackedBarItem, CargaItem, TareaVencida } from '@/hooks/useDashboardBI';
+import type { StackedBarItem, CargaItem, TareaVencida, VencimientoBucket, ProgresoProyecto } from '@/hooks/useDashboardBI';
 
 // ── Paleta ─────────────────────────────────────────────────────────────────────
 const COLOR = {
@@ -43,7 +43,7 @@ export function DonutChart({ data }: { data: { pendiente: number; en_proceso: nu
   const total = entries.reduce((s, e) => s + e.value, 0);
 
   if (total === 0) {
-    return <div className="h-[180px] flex items-center justify-center text-xs text-slate-400">Sin datos</div>;
+    return <div className="h-[200px] flex items-center justify-center text-xs text-slate-400">Sin datos</div>;
   }
 
   const withPct = entries.map((e) => ({
@@ -52,20 +52,18 @@ export function DonutChart({ data }: { data: { pendiente: number; en_proceso: nu
   }));
 
   return (
-    /* h-full para crecer cuando el padre tiene altura definida (grid admin);
-       min-h-[220px] como fallback para la vista usuario (sin altura heredada) */
-    <div className="w-full h-full min-h-[220px] flex flex-col items-center gap-3">
+    <div className="w-full h-full flex flex-col items-center justify-center gap-4" style={{ minHeight: 280 }}>
 
-      {/* Donut — flex-1 + min-h-0 para que escale con el espacio disponible */}
-      <div className="relative w-full flex-1 min-h-0">
+      {/* flex-1: ocupa todo el espacio disponible cuando el padre tiene altura definida (admin grid) */}
+      <div className="relative w-full flex-1" style={{ minHeight: 200 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+          <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
             <Pie
               data={withPct}
               cx="50%"
               cy="50%"
-              innerRadius="38%"
-              outerRadius="55%"
+              innerRadius="42%"
+              outerRadius="65%"
               paddingAngle={3}
               dataKey="value"
               stroke="none"
@@ -80,16 +78,16 @@ export function DonutChart({ data }: { data: { pendiente: number; en_proceso: nu
 
         {/* Total centrado sobre el SVG */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-2xl font-bold text-slate-800 dark:text-white">{total}</span>
+          <span className="text-3xl font-bold text-slate-800 dark:text-white">{total}</span>
           <span className="text-[10px] text-slate-400 uppercase tracking-wide">tareas</span>
         </div>
       </div>
 
-      {/* Leyenda HTML — shrink-0 para que no se comprima */}
-      <div className="flex items-center justify-center gap-5 flex-wrap shrink-0 pb-1">
+      {/* Leyenda HTML */}
+      <div className="flex items-center justify-center gap-5 flex-wrap shrink-0 pb-2">
         {withPct.map((e) => (
           <div key={e.name} className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: e.color }} />
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: e.color }} />
             <span className="text-[11px] text-slate-600 dark:text-slate-300">{e.name}</span>
             <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">{e.pct}</span>
           </div>
@@ -301,5 +299,130 @@ export function WorkloadChart({ data, onExport }: { data: CargaItem[]; onExport:
         </BarChart>
       </ResponsiveContainer>
     </div>
+  );
+}
+
+// ── Distribución por Prioridad ────────────────────────────────────────────────
+export function PrioridadChart({ data }: { data: { Alta: number; Media: number; Baja: number } }) {
+  const entries = [
+    { name: 'Alta',  value: data.Alta,  color: '#ef4444' },
+    { name: 'Media', value: data.Media, color: '#f59e0b' },
+    { name: 'Baja',  value: data.Baja,  color: '#10b981' },
+  ].filter((e) => e.value > 0);
+
+  const total = entries.reduce((s, e) => s + e.value, 0);
+
+  if (total === 0) {
+    return <div className="h-[210px] flex items-center justify-center text-xs text-slate-400">Sin datos</div>;
+  }
+
+  const withPct = entries.map((e) => ({ ...e, pct: `${Math.round((e.value / total) * 100)}%` }));
+
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center gap-4" style={{ minHeight: 280 }}>
+      <div className="relative w-full flex-1" style={{ minHeight: 200 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+            <Pie data={withPct} cx="50%" cy="50%" innerRadius="42%" outerRadius="65%"
+              paddingAngle={3} dataKey="value" stroke="none">
+              {withPct.map((e) => <Cell key={e.name} fill={e.color} />)}
+            </Pie>
+            <Tooltip content={<DonutTooltip />} />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-3xl font-bold text-slate-800 dark:text-white">{total}</span>
+          <span className="text-[10px] text-slate-400 uppercase tracking-wide">tareas</span>
+        </div>
+      </div>
+      <div className="flex items-center justify-center gap-5 flex-wrap shrink-0 pb-2">
+        {withPct.map((e) => (
+          <div key={e.name} className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: e.color }} />
+            <span className="text-[11px] text-slate-600 dark:text-slate-300">{e.name}</span>
+            <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">{e.pct}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Próximos Vencimientos ─────────────────────────────────────────────────────
+export function VencimientosChart({ data }: { data: VencimientoBucket[] }) {
+  const hasData = data.some((d) => d.count > 0);
+
+  if (!hasData) {
+    return (
+      <div className="h-[140px] flex flex-col items-center justify-center gap-2">
+        <p className="text-2xl">✅</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">¡Sin tareas pendientes!</p>
+      </div>
+    );
+  }
+
+  return (
+    <ResponsiveContainer width="100%" height={150}>
+      <BarChart data={data} margin={{ top: 4, right: 16, left: -20, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+        <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+        <Tooltip
+          content={({ active, payload, label }) => {
+            if (!active || !payload?.length) return null;
+            const v = payload[0].value as number;
+            return (
+              <div className="bg-white dark:bg-slate-800 rounded-xl px-3 py-2 shadow-lg border border-slate-100 dark:border-slate-700 text-xs">
+                <p className="font-bold text-slate-800 dark:text-white">{label}</p>
+                <p className="text-slate-600 dark:text-slate-300 mt-0.5">{v} tarea{v !== 1 ? 's' : ''}</p>
+              </div>
+            );
+          }}
+        />
+        <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+          {data.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ── Progreso por Proyecto ─────────────────────────────────────────────────────
+export function ProgresoProyectosChart({ data }: { data: ProgresoProyecto[] }) {
+  if (!data.length) {
+    return <div className="h-[100px] flex items-center justify-center text-xs text-slate-400">Sin datos</div>;
+  }
+
+  const height = Math.max(100, data.length * 44);
+
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 48, left: 4, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" horizontal={false} />
+        <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10 }} />
+        <YAxis type="category" dataKey="nombre" tick={{ fontSize: 10 }} width={90} />
+        <Tooltip
+          content={({ active, payload, label }) => {
+            if (!active || !payload?.length) return null;
+            const d = payload[0].payload as ProgresoProyecto;
+            return (
+              <div className="bg-white dark:bg-slate-800 rounded-xl p-3 shadow-lg border border-slate-100 dark:border-slate-700 text-xs space-y-1 min-w-[160px]">
+                <p className="font-bold text-slate-800 dark:text-white truncate">{label}</p>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="text-slate-500">Completadas:</span>
+                  <span className="font-bold ml-auto">{d.completadas} ({d.completadaPct}%)</span>
+                </div>
+                <p className="text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-700">
+                  Total: {d.total} tarea{d.total !== 1 ? 's' : ''}
+                </p>
+              </div>
+            );
+          }}
+        />
+        <Bar dataKey="completadaPct" name="Completado" stackId="p" fill="#10b981" radius={[0, 0, 0, 0]} />
+        <Bar dataKey="pendientePct"  name="Pendiente"  stackId="p" fill="#e2e8f0" radius={[0, 4, 4, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }

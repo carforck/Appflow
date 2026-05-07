@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTaskStore, TaskWithMeta } from '@/context/TaskStoreContext';
 import { useTaskNotes, TaskNota } from '@/hooks/useTaskNotes';
 import { useNotasUnread } from '@/hooks/useNotasUnread';
+import { useNotasResumen, NotaResumen } from '@/hooks/useNotasResumen';
+import { useSocket } from '@/hooks/useSocket';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 function formatTs(ts: string) {
   try {
     const d    = new Date(ts);
@@ -24,27 +26,108 @@ function getInitials(name: string) {
   return name.split(' ').slice(0, 2).map((n) => n[0] ?? '').join('').toUpperCase();
 }
 
-// ── Chat panel (hook lives here so taskId can change) ─────────────────────────
-function ChatPanel({ task, userEmail }: { task: TaskWithMeta; userEmail: string }) {
-  const { notas, loading, sending, sendNota, bottomRef, typingUser, sendTyping } = useTaskNotes(task.id);
-  const [text, setText] = useState('');
+// ── Chat list item ─────────────────────────────────────────────────────────────
+interface ChatItemData extends NotaResumen { task: TaskWithMeta; unread: number }
 
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
+function ChatListItem({ item, isSelected, isAdmin, onClick }: {
+  item:       ChatItemData;
+  isSelected: boolean;
+  isAdmin:    boolean;
+  onClick:    () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-4 py-3 border-b border-slate-100/60 dark:border-slate-700/40 transition-colors ${
+        isSelected ? 'bg-alzak-blue/10 dark:bg-alzak-gold/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <span className="shrink-0 text-[9px] font-bold text-alzak-blue/60 dark:text-alzak-gold/60 bg-alzak-blue/8 dark:bg-alzak-gold/10 px-1.5 py-0.5 rounded-full">
+            #{item.task.id}
+          </span>
+          <p className={`text-xs font-semibold line-clamp-1 leading-snug ${
+            item.unread > 0 ? 'text-slate-800 dark:text-white' : 'text-slate-600 dark:text-slate-300'
+          }`}>
+            {item.task.tarea_descripcion}
+          </p>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {item.unread > 0 && (
+            <span className="flex items-center gap-0.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+              🔔 {item.unread}
+            </span>
+          )}
+          <span className="text-[9px] text-slate-400 whitespace-nowrap">{formatTs(item.last_message_at)}</span>
+        </div>
+      </div>
+      <p className={`text-[10px] mt-0.5 line-clamp-1 ${
+        item.unread > 0 ? 'text-slate-600 dark:text-slate-300 font-medium' : 'text-slate-400'
+      }`}>
+        {item.last_author ? `${item.last_author.split(' ')[0]}: ` : ''}{item.last_message}
+      </p>
+      <div className="flex items-center gap-1.5 mt-1">
+        <span className="text-[9px] text-slate-400">{item.task.nombre_proyecto}</span>
+        {isAdmin && item.task.responsable_nombre && (
+          <span className="text-[9px] text-slate-400">· {item.task.responsable_nombre}</span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ── Chat panel ─────────────────────────────────────────────────────────────────
+function ChatPanel({ task, userEmail, onNoteSent, clearForTask }: {
+  task:         TaskWithMeta;
+  userEmail:    string;
+  onNoteSent:   () => void;
+  clearForTask: (id: number) => Promise<void>;
+}) {
+  const socket = useSocket();
+  const { notas, loading, sending, sendNota, bottomRef, typingUser, sendTyping } = useTaskNotes(task.id);
+  const [text, setText]     = useState('');
+  const textareaRef         = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-marcar leídas cuando llega una nota nueva y este chat está abierto
+  useEffect(() => {
+    if (!socket) return;
+    const onAlert = (payload: { tipo?: string; id_tarea?: number }) => {
+      if (payload?.tipo === 'nota' && payload.id_tarea === task.id) clearForTask(task.id);
+    };
+    socket.on('notification_alert', onAlert);
+    return () => { socket.off('notification_alert', onAlert); };
+  }, [socket, task.id, clearForTask]);
+
+  const doSend = async () => {
     if (!text.trim() || sending) return;
     const ok = await sendNota(text.trim());
-    if (ok) setText('');
+    if (ok) {
+      setText('');
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      onNoteSent();
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setText(e.target.value);
+    sendTyping();
+    const ta = e.target;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, 96)}px`;
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
   };
 
   return (
     <>
-      {/* Header del chat */}
       <div className="px-4 py-3 border-b border-slate-200/60 dark:border-slate-700/60 shrink-0">
         <p className="text-xs font-bold text-slate-800 dark:text-white line-clamp-1">{task.tarea_descripcion}</p>
         <p className="text-[10px] text-slate-400">{task.nombre_proyecto} · {task.responsable_nombre}</p>
       </div>
 
-      {/* Mensajes */}
       <div className="flex-1 overflow-y-auto kanban-scroll px-4 py-4 space-y-3">
         {loading && (
           <div className="flex justify-center py-4">
@@ -52,8 +135,8 @@ function ChatPanel({ task, userEmail }: { task: TaskWithMeta; userEmail: string 
           </div>
         )}
         {!loading && notas.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-slate-400">
-            <svg className="w-10 h-10 mb-2 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-2">
+            <svg className="w-10 h-10 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
             <p className="text-xs">Sin notas aún. Sé el primero en comentar.</p>
@@ -62,14 +145,9 @@ function ChatPanel({ task, userEmail }: { task: TaskWithMeta; userEmail: string 
         {notas.map((n: TaskNota) => {
           const isMe = n.usuario_correo === userEmail;
           return (
-            <div
-              key={n.id}
-              className={`flex gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${n._pending || n._error ? 'opacity-70' : ''}`}
-            >
+            <div key={n.id} className={`flex gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${n._pending || n._error ? 'opacity-70' : ''}`}>
               <div className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                isMe
-                  ? 'bg-alzak-blue text-white dark:bg-alzak-gold dark:text-alzak-dark'
-                  : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                isMe ? 'bg-alzak-blue text-white dark:bg-alzak-gold dark:text-alzak-dark' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
               }`}>
                 {getInitials(n.usuario_nombre)}
               </div>
@@ -103,152 +181,161 @@ function ChatPanel({ task, userEmail }: { task: TaskWithMeta; userEmail: string 
         <div ref={bottomRef} />
       </div>
 
-      {/* Typing indicator */}
       {typingUser && (
         <div className="px-4 pb-1 flex items-center gap-2">
           <div className="flex gap-0.5 items-end">
             {[0, 1, 2].map((i) => (
-              <span
-                key={i}
-                className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce"
-                style={{ animationDelay: `${i * 0.15}s` }}
-              />
+              <span key={i} className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
             ))}
           </div>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 italic">
-            {typingUser} está escribiendo…
-          </span>
+          <span className="text-[10px] text-slate-400 dark:text-slate-500 italic">{typingUser} está escribiendo…</span>
         </div>
       )}
 
-      {/* Input */}
-      <form onSubmit={handleSend} className="px-4 py-3 border-t border-slate-200/60 dark:border-slate-700/60 shrink-0 flex gap-2 items-center">
-        <input
-          type="text"
+      <form
+        onSubmit={(e) => { e.preventDefault(); doSend(); }}
+        className="px-4 py-3 border-t border-slate-200/60 dark:border-slate-700/60 shrink-0 flex gap-2 items-end"
+      >
+        <textarea
+          ref={textareaRef}
           value={text}
-          onChange={(e) => { setText(e.target.value); sendTyping(); }}
-          placeholder="Escribe una nota…"
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder="Escribe una nota… (Enter para enviar, Shift+Enter nueva línea)"
           disabled={sending}
-          className="flex-1 text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-alzak-blue/40 disabled:opacity-50"
+          rows={1}
+          className="flex-1 text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-alzak-blue/40 disabled:opacity-50 resize-none overflow-y-auto leading-snug"
         />
         <button
           type="submit"
           disabled={!text.trim() || sending}
           aria-label="Enviar nota"
-          className="w-10 h-10 flex items-center justify-center rounded-xl bg-alzak-blue dark:bg-alzak-gold text-white dark:text-alzak-dark hover:opacity-90 disabled:opacity-40 transition-all"
+          className="w-10 h-10 flex items-center justify-center rounded-xl bg-alzak-blue dark:bg-alzak-gold text-white dark:text-alzak-dark hover:opacity-90 disabled:opacity-40 transition-all shrink-0"
         >
-          {sending ? (
-            <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-          ) : (
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-            </svg>
-          )}
+          {sending
+            ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+            : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" /></svg>
+          }
         </button>
       </form>
     </>
   );
 }
 
-// ── Página principal ──────────────────────────────────────────────────────────
+// ── Página ─────────────────────────────────────────────────────────────────────
 const ROLE_RANK: Record<string, number> = { superadmin: 3, admin: 2, user: 1 };
 
 export default function NotasPage() {
   const { user }  = useAuth();
   const { tasks } = useTaskStore();
   const isAdmin   = ROLE_RANK[user?.role ?? 'user'] >= 2;
-  const { unreadByTask, clearForTask } = useNotasUnread();
+
+  const { unreadByTask, clearForTask, setActiveTaskId }      = useNotasUnread();
+  const { resumen, loading: loadingResumen, refreshResumen } = useNotasResumen();
 
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
 
   const handleSelectTask = (id: number) => {
     setSelectedTaskId(id);
+    setActiveTaskId(id);
     if (unreadByTask[id]) clearForTask(id);
   };
 
-  const myTasks = isAdmin
-    ? tasks
-    : tasks.filter((t) => t.responsable_correo === user?.email);
+  // Limpiar chat activo al abandonar la página
+  useEffect(() => {
+    return () => { setActiveTaskId(null); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const chatList = useMemo(() => {
+    const taskMap = new Map(tasks.map((t) => [t.id, t]));
+    return resumen
+      .map((r) => ({ ...r, task: taskMap.get(r.id_tarea), unread: unreadByTask[r.id_tarea] ?? 0 }))
+      .filter((item): item is ChatItemData => !!item.task)
+      .sort((a, b) => {
+        if (a.unread > 0 && b.unread === 0) return -1;
+        if (a.unread === 0 && b.unread > 0) return 1;
+        return b.last_message_at.localeCompare(a.last_message_at);
+      });
+  }, [resumen, tasks, unreadByTask]);
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
+  const totalUnread  = Object.values(unreadByTask).reduce((s, n) => s + n, 0);
+  const unreadItems  = chatList.filter((c) => c.unread > 0);
+  const historyItems = chatList.filter((c) => c.unread === 0);
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Notas</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-          {isAdmin ? 'Panel centralizado de notas de todas las tareas' : 'Notas en tus tareas asignadas'}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Notas</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            {isAdmin ? 'Chats de todas las tareas con actividad' : 'Chats de tus tareas asignadas'}
+          </p>
+        </div>
+        {totalUnread > 0 && (
+          <span className="px-3 py-1.5 rounded-full bg-red-500 text-white text-xs font-bold">
+            {totalUnread} sin leer
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-220px)] min-h-[400px]">
 
-        {/* Panel izquierdo — lista de tareas */}
-        <div
-          className="glass rounded-[20px] border border-slate-200/60 dark:border-slate-700/60 flex flex-col overflow-hidden"
-          style={{ background: 'var(--sidebar-bg)' }}
-        >
-          <div className="px-4 py-3 border-b border-slate-200/60 dark:border-slate-700/60 shrink-0">
-            <p className="text-xs font-bold text-slate-700 dark:text-white uppercase tracking-wide">
-              Tareas ({myTasks.length})
-            </p>
+        {/* Lista de chats */}
+        <div className="glass rounded-[20px] border border-slate-200/60 dark:border-slate-700/60 flex flex-col overflow-hidden" style={{ background: 'var(--sidebar-bg)' }}>
+          <div className="px-4 py-3 border-b border-slate-200/60 dark:border-slate-700/60 shrink-0 flex items-center justify-between">
+            <p className="text-xs font-bold text-slate-700 dark:text-white uppercase tracking-wide">Chats activos</p>
+            {!loadingResumen && <span className="text-[10px] text-slate-400">{chatList.length}</span>}
           </div>
           <div className="overflow-y-auto kanban-scroll flex-1">
-            {myTasks.length === 0 ? (
-              <p className="text-center text-xs text-slate-400 py-8">Sin tareas asignadas</p>
+            {loadingResumen ? (
+              <div className="flex justify-center py-8">
+                <span className="w-5 h-5 border-2 border-slate-200 border-t-alzak-blue rounded-full animate-spin" />
+              </div>
+            ) : chatList.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full py-12 space-y-2">
+                <svg className="w-10 h-10 opacity-20 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <p className="text-xs text-slate-400 text-center px-4">
+                  Sin chats iniciados.<br />Las notas de tareas aparecerán aquí.
+                </p>
+              </div>
             ) : (
-              myTasks.map((t) => {
-                const unread = unreadByTask[t.id] ?? 0;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => handleSelectTask(t.id)}
-                    className={`w-full text-left px-4 py-3 border-b border-slate-100/60 dark:border-slate-700/40 transition-colors ${
-                      selectedTaskId === t.id
-                        ? 'bg-alzak-blue/10 dark:bg-alzak-gold/10'
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 line-clamp-2 leading-snug flex-1">
-                        {t.tarea_descripcion}
-                      </p>
-                      {unread > 0 && (
-                        <span className="shrink-0 flex items-center gap-0.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
-                          🔔 {unread}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] text-slate-400">{t.nombre_proyecto}</span>
-                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold">
-                        💬
-                      </span>
-                    </div>
-                    {isAdmin && (
-                      <p className="text-[10px] text-slate-400 mt-0.5">{t.responsable_nombre}</p>
-                    )}
-                  </button>
-                );
-              })
+              <>
+                {unreadItems.length > 0 && (
+                  <p className="px-4 pt-3 pb-1 text-[9px] font-bold text-red-400 uppercase tracking-wider">Sin leer</p>
+                )}
+                {unreadItems.map((item) => (
+                  <ChatListItem key={item.id_tarea} item={item} isSelected={selectedTaskId === item.id_tarea} isAdmin={isAdmin} onClick={() => handleSelectTask(item.id_tarea)} />
+                ))}
+                {unreadItems.length > 0 && historyItems.length > 0 && (
+                  <p className="px-4 pt-3 pb-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider border-t border-slate-100 dark:border-slate-700/40 mt-1">Historial</p>
+                )}
+                {historyItems.map((item) => (
+                  <ChatListItem key={item.id_tarea} item={item} isSelected={selectedTaskId === item.id_tarea} isAdmin={isAdmin} onClick={() => handleSelectTask(item.id_tarea)} />
+                ))}
+              </>
             )}
           </div>
         </div>
 
-        {/* Panel derecho — chat */}
-        <div
-          className="lg:col-span-2 glass rounded-[20px] border border-slate-200/60 dark:border-slate-700/60 flex flex-col overflow-hidden"
-          style={{ background: 'var(--sidebar-bg)' }}
-        >
+        {/* Panel de chat */}
+        <div className="lg:col-span-2 glass rounded-[20px] border border-slate-200/60 dark:border-slate-700/60 flex flex-col overflow-hidden" style={{ background: 'var(--sidebar-bg)' }}>
           {selectedTask && user ? (
-            <ChatPanel task={selectedTask} userEmail={user.email} />
+            <ChatPanel task={selectedTask} userEmail={user.email} onNoteSent={refreshResumen} clearForTask={clearForTask} />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-2">
               <svg className="w-12 h-12 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
-              <p className="text-sm font-medium">Selecciona una tarea para ver sus notas</p>
+              <p className="text-sm font-medium">Selecciona un chat para ver las notas</p>
+              {chatList.length === 0 && !loadingResumen && (
+                <p className="text-xs text-center px-8 text-slate-400">
+                  Inicia una conversación desde el detalle de cualquier tarea.
+                </p>
+              )}
             </div>
           )}
         </div>

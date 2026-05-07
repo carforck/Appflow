@@ -15,6 +15,7 @@ const pool = mysql.createPool({
   queueLimit:           0,
   enableKeepAlive:      true,
   keepAliveInitialDelay: 10000,
+  dateStrings:          true,  // DATE/DATETIME se devuelven como 'YYYY-MM-DD' en vez de Date objects
 });
 
 module.exports = pool;

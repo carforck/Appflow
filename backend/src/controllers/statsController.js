@@ -15,7 +15,7 @@ const pool = require('../config/db');
 
 async function getDashboardStats(req, res) {
   try {
-    const { project_id, prioridad, date_from, date_to, empresa } = req.query;
+    const { project_id, prioridad, date_from, date_to, empresa, financiador } = req.query;
     const isUser    = req.user.role === 'user';
     const userEmail = req.user.email;
 
@@ -34,7 +34,8 @@ async function getDashboardStats(req, res) {
     if (prioridad)  { conditions.push('t.prioridad = ?');         params.push(prioridad); }
     if (date_from)  { conditions.push('t.fecha_entrega >= ?');    params.push(date_from); }
     if (date_to)    { conditions.push('t.fecha_entrega <= ?');    params.push(date_to); }
-    if (empresa)    { conditions.push('p.empresa = ?');           params.push(empresa); }
+    if (empresa)     { conditions.push('p.empresa = ?');      params.push(empresa); }
+    if (financiador) { conditions.push('p.financiador = ?'); params.push(financiador); }
 
     // JOIN requerido para filtrar por empresa y para mostrar nombre_proyecto
     const JOIN  = 'LEFT JOIN projects p ON t.id_proyecto = p.id_proyecto';
@@ -167,4 +168,55 @@ async function getDashboardStats(req, res) {
   }
 }
 
-module.exports = { getDashboardStats };
+/**
+ * GET /api/stats/actividad-heatmap
+ * Devuelve { date: 'YYYY-MM-DD', count: number }[] para los últimos 4 meses.
+ * Combina tareas completadas + notas enviadas por el usuario autenticado.
+ */
+async function getActividadHeatmap(req, res) {
+  const { email } = req.user;
+  const desde = new Date();
+  desde.setMonth(desde.getMonth() - 4);
+  const desdeStr = desde.toISOString().slice(0, 10);
+
+  try {
+    // COALESCE: si fecha_finalizacion es NULL (tareas históricas), usa fecha_entrega
+    const [tareas] = await pool.query(
+      `SELECT DATE(COALESCE(fecha_finalizacion, fecha_entrega)) AS fecha, COUNT(*) AS cnt
+       FROM tasks
+       WHERE responsable_correo = ?
+         AND estado_tarea = 'Completada'
+         AND COALESCE(fecha_finalizacion, fecha_entrega) >= ?
+       GROUP BY DATE(COALESCE(fecha_finalizacion, fecha_entrega))`,
+      [email, desdeStr],
+    );
+
+    const [notas] = await pool.query(
+      `SELECT DATE(created_at) AS fecha, COUNT(*) AS cnt
+       FROM task_notas
+       WHERE usuario_correo = ?
+         AND DATE(created_at) >= ?
+       GROUP BY DATE(created_at)`,
+      [email, desdeStr],
+    );
+
+    // dateStrings:true → r.fecha ya es string 'YYYY-MM-DD'
+    const map = {};
+    for (const r of tareas) {
+      const d = String(r.fecha);
+      map[d] = (map[d] ?? 0) + Number(r.cnt);
+    }
+    for (const r of notas) {
+      const d = String(r.fecha);
+      map[d] = (map[d] ?? 0) + Number(r.cnt);
+    }
+
+    const actividad = Object.entries(map).map(([date, count]) => ({ date, count }));
+    res.json({ actividad, desde: desdeStr });
+  } catch (err) {
+    console.error('❌ GET /api/stats/actividad-heatmap:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { getDashboardStats, getActividadHeatmap };

@@ -71,7 +71,7 @@ async function getTareas(req, res) {
 
 async function crearTarea(req, res) {
   try {
-    const { id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo, prioridad, fecha_entrega } = req.body;
+    const { id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo, prioridad, fecha_entrega, fecha_inicio } = req.body;
 
     if (!id_proyecto || !tarea_descripcion || !prioridad || !fecha_entrega) {
       return res.status(400).json({ error: 'Faltan campos requeridos: id_proyecto, tarea_descripcion, prioridad, fecha_entrega' });
@@ -80,11 +80,14 @@ async function crearTarea(req, res) {
     const [[proyRow]] = await pool.query('SELECT nombre_proyecto FROM projects WHERE id_proyecto = ?', [id_proyecto]);
     const proyNombre  = proyRow?.nombre_proyecto ?? id_proyecto;
 
+    // fecha_inicio: usa la enviada o la fecha actual si no viene
+    const fechaInicioFinal = fecha_inicio || new Date().toISOString().slice(0, 10);
+
     const [result] = await pool.query(
       `INSERT INTO tasks (id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo,
-        prioridad, fecha_entrega, estado_tarea)
-       VALUES (?, ?, ?, ?, ?, ?, 'Pendiente Revisión')`,
-      [id_proyecto, tarea_descripcion.trim(), responsable_nombre || null, responsable_correo || null, prioridad, fecha_entrega]
+        prioridad, fecha_inicio, fecha_entrega, estado_tarea)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendiente Revisión')`,
+      [id_proyecto, tarea_descripcion.trim(), responsable_nombre || null, responsable_correo || null, prioridad, fechaInicioFinal, fecha_entrega]
     );
     const taskId = result.insertId;
 
@@ -320,7 +323,15 @@ async function commitStaging(req, res) {
 async function updateTask(req, res) {
   try {
     const { id } = req.params;
-    const { prioridad, responsable_nombre, responsable_correo, fecha_inicio, fecha_entrega } = req.body;
+    const {
+      prioridad, responsable_nombre, responsable_correo, fecha_inicio, fecha_entrega,
+      id_proyecto, tarea_descripcion, estado_tarea,
+    } = req.body;
+
+    // fecha_finalizacion sigue la lógica del estado cuando se cambia
+    let fechaFinSQL = '';
+    if (estado_tarea === 'Completada')          fechaFinSQL = ', fecha_finalizacion = NOW()';
+    else if (estado_tarea != null)              fechaFinSQL = ', fecha_finalizacion = NULL';
 
     const [result] = await pool.query(
       `UPDATE tasks SET
@@ -328,21 +339,31 @@ async function updateTask(req, res) {
          responsable_nombre = COALESCE(?, responsable_nombre),
          responsable_correo = COALESCE(?, responsable_correo),
          fecha_inicio       = COALESCE(?, fecha_inicio),
-         fecha_entrega      = COALESCE(?, fecha_entrega)
+         fecha_entrega      = COALESCE(?, fecha_entrega),
+         id_proyecto        = COALESCE(?, id_proyecto),
+         tarea_descripcion  = COALESCE(?, tarea_descripcion),
+         estado_tarea       = COALESCE(?, estado_tarea)
+         ${fechaFinSQL}
        WHERE id = ? AND estado_tarea != 'Pendiente Revisión'`,
-      [prioridad ?? null, responsable_nombre ?? null, responsable_correo ?? null,
-       fecha_inicio ?? null, fecha_entrega ?? null, id]
+      [
+        prioridad ?? null, responsable_nombre ?? null, responsable_correo ?? null,
+        fecha_inicio ?? null, fecha_entrega ?? null,
+        id_proyecto ?? null, tarea_descripcion ?? null, estado_tarea ?? null,
+        id,
+      ]
     );
 
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Tarea no encontrada o en revisión' });
 
-    // Sincronizar tablero en tiempo real (campos que el board muestra)
     emitTaskUpdated({
-      id:                 Number(id),
-      ...(prioridad       ? { prioridad }       : {}),
-      ...(fecha_entrega   ? { fecha_entrega }   : {}),
-      ...(responsable_nombre ? { responsable_nombre } : {}),
-      ...(responsable_correo ? { responsable_correo } : {}),
+      id: Number(id),
+      ...(prioridad          ? { prioridad }                    : {}),
+      ...(fecha_entrega      ? { fecha_entrega }                : {}),
+      ...(responsable_nombre ? { responsable_nombre }           : {}),
+      ...(responsable_correo ? { responsable_correo }           : {}),
+      ...(id_proyecto        ? { id_proyecto }                  : {}),
+      ...(tarea_descripcion  ? { tarea_descripcion }            : {}),
+      ...(estado_tarea       ? { status: estado_tarea }         : {}),
     });
 
     console.log(`✅ PATCH /tareas/${id} → campos actualizados`);

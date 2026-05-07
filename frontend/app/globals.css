@@ -4,15 +4,17 @@
 
 /* ── CSS Variables ─────────────────────────────────────────────────────────── */
 :root {
-  --background:  #f1f5f9;
-  --sidebar-bg:  rgba(255, 255, 255, 0.90);
-  --bottom-bar:  rgba(255, 255, 255, 0.94);
+  --background:        #f1f5f9;
+  --sidebar-bg:        rgba(255, 255, 255, 0.90);
+  --bottom-bar:        rgba(255, 255, 255, 0.94);
+  --background-sticky: rgba(241, 245, 249, 0.92);
 }
 
 .dark {
-  --background:  #0f172a;
-  --sidebar-bg:  rgba(15, 23, 42, 0.94);
-  --bottom-bar:  rgba(15, 23, 42, 0.94);
+  --background:        #0f172a;
+  --sidebar-bg:        rgba(15, 23, 42, 0.94);
+  --bottom-bar:        rgba(15, 23, 42, 0.94);
+  --background-sticky: rgba(15, 23, 42, 0.92);
 }
 
 /* ── Base ──────────────────────────────────────────────────────────────────── */

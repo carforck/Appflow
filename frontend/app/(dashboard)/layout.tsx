@@ -6,17 +6,26 @@ import { useAuth } from '@/context/AuthContext';
 import { SidebarProvider, useSidebar } from '@/context/SidebarContext';
 import { TaskStoreProvider } from '@/context/TaskStoreContext';
 import { NotificationProvider } from '@/context/NotificationContext';
+import { NotasUnreadProvider } from '@/context/NotasUnreadContext';
 import { ProjectStoreProvider } from '@/context/ProjectStoreContext';
 import { ToastProvider } from '@/components/Toast';
 import { StagingProvider } from '@/context/StagingContext';
 import { UserStoreProvider } from '@/context/UserStoreContext';
 import Navigation from '@/components/Navigation';
+import { useNotifToast } from '@/hooks/useNotifToast';
+import { NotifToastContainer } from '@/components/ui/NotifToast';
+
+function NotifToastLayer() {
+  const { toasts, dismiss } = useNotifToast();
+  return <NotifToastContainer toasts={toasts} dismiss={dismiss} />;
+}
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       <Navigation />
+      <NotifToastLayer />
       <main
         className={`transition-all duration-300 pt-14 lg:pt-0 pb-28 lg:pb-10 min-h-screen ${
           collapsed ? 'lg:ml-[68px]' : 'lg:ml-64'
@@ -48,19 +57,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <NotificationProvider>
-      <ProjectStoreProvider>
-        <TaskStoreProvider>
-          <UserStoreProvider>
-            <StagingProvider>
-              <SidebarProvider>
-                <ToastProvider>
-                  <DashboardContent>{children}</DashboardContent>
-                </ToastProvider>
-              </SidebarProvider>
-            </StagingProvider>
-          </UserStoreProvider>
-        </TaskStoreProvider>
-      </ProjectStoreProvider>
+      <NotasUnreadProvider>
+        <ProjectStoreProvider>
+          <TaskStoreProvider>
+            <UserStoreProvider>
+              <StagingProvider>
+                <SidebarProvider>
+                  <ToastProvider>
+                    <DashboardContent>{children}</DashboardContent>
+                  </ToastProvider>
+                </SidebarProvider>
+              </StagingProvider>
+            </UserStoreProvider>
+          </TaskStoreProvider>
+        </ProjectStoreProvider>
+      </NotasUnreadProvider>
     </NotificationProvider>
   );
 }

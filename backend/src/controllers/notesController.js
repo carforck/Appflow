@@ -74,19 +74,21 @@ async function addNota(req, res) {
     const idTarea  = parseInt(id, 10);
 
     if (role === 'user') {
+      const titulo = `Nota en: ${taskDesc}`;
       await pool.query(
         `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
          VALUES ('nota', ?, ?, ?, NULL)`,
-        [`Nota en: ${taskDesc}`, notifMsg, idTarea],
+        [titulo, notifMsg, idTarea],
       );
-      emitNotifAlert(null, { tipo: 'nota', id_tarea: idTarea });
+      emitNotifAlert(null, { tipo: 'nota', id_tarea: idTarea, titulo, preview: notifMsg, autor: autorNombre, autor_correo: email });
     } else if (task.responsable_correo) {
+      const titulo = `Respuesta del equipo: ${taskDesc}`;
       await pool.query(
         `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
          VALUES ('nota', ?, ?, ?, ?)`,
-        [`Respuesta del equipo: ${taskDesc}`, notifMsg, idTarea, task.responsable_correo],
+        [titulo, notifMsg, idTarea, task.responsable_correo],
       );
-      emitNotifAlert(task.responsable_correo, { tipo: 'nota', id_tarea: idTarea });
+      emitNotifAlert(task.responsable_correo, { tipo: 'nota', id_tarea: idTarea, titulo, preview: notifMsg, autor: autorNombre, autor_correo: email });
     }
 
     res.status(201).json({ nota });
@@ -96,4 +98,41 @@ async function addNota(req, res) {
   }
 }
 
-module.exports = { getNotas, addNota };
+async function getNotasResumen(req, res) {
+  const { email, role } = req.user;
+  try {
+    let query = `
+      SELECT
+        n.id_tarea,
+        COUNT(*)          AS total_notas,
+        MAX(n.created_at) AS last_message_at,
+        (SELECT n2.mensaje        FROM task_notas n2 WHERE n2.id_tarea = n.id_tarea ORDER BY n2.created_at DESC LIMIT 1) AS last_message,
+        (SELECT n2.usuario_nombre FROM task_notas n2 WHERE n2.id_tarea = n.id_tarea ORDER BY n2.created_at DESC LIMIT 1) AS last_author
+      FROM task_notas n
+      JOIN tasks t ON n.id_tarea = t.id
+      WHERE t.estado_tarea != 'Pendiente Revisión'
+    `;
+    const params = [];
+    if (role === 'user') {
+      query += ` AND t.responsable_correo = ?`;
+      params.push(email);
+    }
+    query += ` GROUP BY n.id_tarea ORDER BY MAX(n.created_at) DESC`;
+
+    const [rows] = await pool.query(query, params);
+    res.json({
+      resumen: rows.map((r) => ({
+        id_tarea:        r.id_tarea,
+        total_notas:     Number(r.total_notas),
+        last_message_at: r.last_message_at,
+        last_message:    (r.last_message ?? '').slice(0, 100),
+        last_author:     r.last_author ?? '',
+      })),
+    });
+  } catch (err) {
+    console.error('❌ GET /tareas/notas-resumen:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { getNotas, addNota, getNotasResumen };

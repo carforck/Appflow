@@ -127,6 +127,7 @@ export function ListaMaestraView() {
                 <col style={{ width: 120 }} />  {/* Nombre */}
                 <col style={{ width: 90  }} />  {/* Empresa */}
                 <col style={{ width: 90  }} />  {/* Financiador */}
+                <col style={{ width: 52  }} />  {/* ID Tarea */}
                 <col />                          {/* Tarea */}
                 <col style={{ width: 82  }} />  {/* Estado */}
                 <col style={{ width: 130 }} />  {/* Responsable */}
@@ -140,6 +141,7 @@ export function ListaMaestraView() {
                   <th className={TH}>Nombre</th>
                   <th className={TH}>Empresa</th>
                   <th className={TH}>Financiador</th>
+                  <th className={TH}>#</th>
                   <th className={TH}>Tarea</th>
                   <th className={TH}>Estado</th>
                   <th className={TH}>Responsable</th>
@@ -154,6 +156,7 @@ export function ListaMaestraView() {
                     key={task.id}
                     task={task}
                     users={users}
+                    projects={projects}
                     projectMap={projectMap}
                     onUpdate={makeUpdater(task.id)}
                   />

@@ -96,11 +96,17 @@ async function crearTarea(req, res) {
     // fecha_inicio: usa la enviada o la fecha actual si no viene
     const fechaInicioFinal = fecha_inicio || new Date().toISOString().slice(0, 10);
 
+    // Admins/superadmins crean tareas directamente en 'Pendiente' (visible en el board).
+    // Solo el procesador de minutas crea en 'Pendiente Revisión'.
+    const estadoInicial = (req.user.role === 'admin' || req.user.role === 'superadmin')
+      ? 'Pendiente'
+      : 'Pendiente Revisión';
+
     const [result] = await pool.query(
       `INSERT INTO tasks (id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo,
         prioridad, fecha_inicio, fecha_entrega, estado_tarea)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendiente Revisión')`,
-      [id_proyecto, tarea_descripcion.trim(), responsable_nombre || null, responsable_correo || null, prioridad, fechaInicioFinal, fecha_entrega]
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id_proyecto, tarea_descripcion.trim(), responsable_nombre || null, responsable_correo || null, prioridad, fechaInicioFinal, fecha_entrega, estadoInicial]
     );
     const taskId = result.insertId;
 
@@ -124,7 +130,6 @@ async function crearTarea(req, res) {
       console.warn(`⚠️ Notificación no creada para tarea #${taskId}:`, notifErr.message);
     }
 
-    // La tarea nace en Revisión — el board la verá cuando se apruebe (task_created)
     emitTaskCreated();
 
     console.log(`✅ POST /tareas/crear → id=${taskId} proyecto=${id_proyecto}`);

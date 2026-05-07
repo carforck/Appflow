@@ -106,18 +106,35 @@ export async function captureChart(elementId: string): Promise<ChartCapture | nu
     const h2c = (window as WinH2C).html2canvas;
     if (!h2c) return null;
     const canvas = await h2c(el, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
+      scale:           2,
+      useCORS:         true,
+      allowTaint:      true,
+      logging:         false,
       backgroundColor: '#ffffff',
       onclone: (cloneDoc: Document) => {
-        // Fuerza light mode en el clon para que los charts salgan con fondo blanco
         cloneDoc.documentElement.classList.remove('dark');
         const cloned = cloneDoc.getElementById(elementId);
         if (cloned) {
-          cloned.style.setProperty('background', '#ffffff', 'important');
-          cloned.style.setProperty('box-shadow', 'none', 'important');
+          cloned.style.setProperty('background',         '#ffffff', 'important');
+          cloned.style.setProperty('backdrop-filter',    'none',    'important');
+          cloned.style.setProperty('-webkit-backdrop-filter', 'none', 'important');
+          cloned.style.setProperty('box-shadow',         'none',    'important');
         }
+        // Recharts renderiza SVG — html2canvas necesita dimensiones explícitas en el SVG
+        cloneDoc.querySelectorAll('svg').forEach((svg) => {
+          const rect = svg.getBoundingClientRect();
+          if (rect.width  > 0 && !svg.getAttribute('width'))  svg.setAttribute('width',  String(rect.width));
+          if (rect.height > 0 && !svg.getAttribute('height')) svg.setAttribute('height', String(rect.height));
+        });
+        // Inlinear fill/stroke para que html2canvas pinte los paths y textos del SVG
+        cloneDoc.querySelectorAll('svg *').forEach((node) => {
+          const computed = window.getComputedStyle(node);
+          const svgEl    = node as SVGElement;
+          const fill   = computed.fill;
+          const stroke = computed.stroke;
+          if (fill   && fill   !== 'none' && !svgEl.style.fill)   svgEl.style.fill   = fill;
+          if (stroke && stroke !== 'none' && !svgEl.style.stroke) svgEl.style.stroke = stroke;
+        });
       },
     });
     return { dataUrl: canvas.toDataURL('image/png'), pxW: canvas.width, pxH: canvas.height };

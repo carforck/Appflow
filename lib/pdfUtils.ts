@@ -1,6 +1,8 @@
 "use client";
 
-type Win = Window & { jspdf?: { jsPDF: new (...a: unknown[]) => unknown } };
+type Win    = Window & { jspdf?: { jsPDF: new (...a: unknown[]) => unknown } };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type WinH2C = Window & { html2canvas?: (el: HTMLElement, opts?: Record<string, any>) => Promise<HTMLCanvasElement> };
 
 async function loadScript(src: string): Promise<void> {
   return new Promise((res, rej) => {
@@ -23,7 +25,6 @@ export async function loadPDFLibs(): Promise<{ JsPDF: any }> {
   return { JsPDF };
 }
 
-// Abre el PDF en nueva pestaña (vista previa + descarga desde el visor nativo)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function openPDFPreview(doc: any): void {
   const blob = doc.output('blob') as Blob;
@@ -32,16 +33,14 @@ export function openPDFPreview(doc: any): void {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-// ── Logo Alzak para PDFs ───────────────────────────────────────────────────────
+// Logo Alzak para PDFs
 let _logoB64:  string | null = null;
 let _logoLoad: Promise<string | null> | null = null;
 
-// Convierte el WebP (con transparencia) a PNG via canvas — jsPDF renderiza
-// PNG correctamente preservando el canal alpha sobre el banner azul.
 async function _fetchLogo(): Promise<string | null> {
   try {
-    const resp = await fetch('/logo-alzak.webp');
-    const blob = await resp.blob();
+    const resp   = await fetch('/logo-alzak.webp');
+    const blob   = await resp.blob();
     const blobUrl = URL.createObjectURL(blob);
     return new Promise((resolve) => {
       const img = new window.Image();
@@ -68,27 +67,59 @@ export function getLogoBase64(): Promise<string | null> {
   return _logoLoad;
 }
 
-/**
- * Dibuja el logo Alzak en la esquina superior derecha del header de un PDF.
- * El logo es 600×300 (ratio 2:1). Si no carga, usa el fallback "AF" dorado.
- * @param bannerH — altura del banner azul en mm (por defecto 22)
- */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function addPDFLogo(doc: any, pageW: number, bannerH = 22): Promise<void> {
-  const logoH = bannerH - 6;          // margen 3mm arriba y abajo
-  const logoW = logoH * 2;            // ratio 2:1
+  const logoH = bannerH - 6;
+  const logoW = logoH * 2;
   const x     = pageW - logoW - 5;
   const y     = (bannerH - logoH) / 2;
-
-  const b64 = await getLogoBase64();
+  const b64   = await getLogoBase64();
   if (b64) {
     doc.addImage(b64, 'PNG', x, y, logoW, logoH);
   } else {
-    // Fallback: cuadro dorado "AF"
     doc.setFillColor(234, 179, 8);
     doc.roundedRect(pageW - 26, 5, 12, 12, 2, 2, 'F');
     doc.setFontSize(8); doc.setFont('helvetica', 'bold');
     doc.setTextColor(26, 54, 93);
     doc.text('AF', pageW - 22, 12.5);
   }
+}
+
+// html2canvas — captura de graficas con fondo blanco forzado (sin dark mode)
+async function loadHtml2Canvas(): Promise<void> {
+  if (!(window as WinH2C).html2canvas) {
+    await loadScript('/vendor/html2canvas.min.js');
+  }
+}
+
+export interface ChartCapture {
+  dataUrl: string;
+  pxW:     number;
+  pxH:     number;
+}
+
+export async function captureChart(elementId: string): Promise<ChartCapture | null> {
+  try {
+    await loadHtml2Canvas();
+    const el = document.getElementById(elementId);
+    if (!el) return null;
+    const h2c = (window as WinH2C).html2canvas;
+    if (!h2c) return null;
+    const canvas = await h2c(el, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      onclone: (cloneDoc: Document) => {
+        // Fuerza light mode en el clon para que los charts salgan con fondo blanco
+        cloneDoc.documentElement.classList.remove('dark');
+        const cloned = cloneDoc.getElementById(elementId);
+        if (cloned) {
+          cloned.style.setProperty('background', '#ffffff', 'important');
+          cloned.style.setProperty('box-shadow', 'none', 'important');
+        }
+      },
+    });
+    return { dataUrl: canvas.toDataURL('image/png'), pxW: canvas.width, pxH: canvas.height };
+  } catch { return null; }
 }

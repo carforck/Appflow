@@ -96,9 +96,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // ── Socket: alerta instantánea de nueva notificación ─────────────────────
   useEffect(() => {
     if (!socket) return;
-    const handleAlert = (_payload?: { tipo?: string | null; id_tarea?: number | null }) => {
+    const handleAlert = (payload?: { tipo?: string | null; id_tarea?: number | null }) => {
       refresh();
-      if (document.visibilityState === 'visible') playNotifSound();
+      // Las notas tienen su propio toast con sonido — evitar doble sonido
+      if (payload?.tipo !== 'nota' && document.visibilityState === 'visible') playNotifSound();
     };
     socket.on('notification_alert', handleAlert);
     return () => { socket.off('notification_alert', handleAlert); };

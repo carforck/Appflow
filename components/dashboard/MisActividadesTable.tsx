@@ -22,14 +22,16 @@ const PRIO_DOT: Record<string, string> = {
 
 function fmtDate(d: string | undefined) {
   if (!d) return '—';
-  try {
-    return new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' });
-  } catch { return d; }
+  const [y, m, day] = d.split('-');
+  if (y && m && day) return `${day}/${m}/${y.slice(2)}`;
+  return d;
 }
 
 function isOverdue(fecha?: string, status?: string) {
   if (!fecha || status === 'Completada') return false;
-  return new Date(fecha) < new Date(new Date().toDateString());
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return fecha < today;
 }
 
 interface Props { tasks: TaskWithMeta[] }

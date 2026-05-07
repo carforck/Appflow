@@ -2,24 +2,8 @@
 
 import { useMemo } from 'react';
 import { TaskWithMeta } from '@/context/TaskStoreContext';
-import type { TareaStatus } from '@/lib/mockData';
 import { KanbanCard }  from './KanbanCard';
-import { STATUS_CFG, ALL_STATUSES } from './taskBoardConfig';
-
-// ── Column Header ─────────────────────────────────────────────────────────────
-
-function ColumnHeader({ status, count }: { status: TareaStatus; count: number }) {
-  const cfg = STATUS_CFG[status];
-  return (
-    <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border ${cfg.headerCls}`}>
-      <span className="text-sm">{cfg.icon}</span>
-      <span className="text-xs font-bold text-slate-700 dark:text-slate-100">{cfg.label}</span>
-      <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cfg.countCls}`}>
-        {count}
-      </span>
-    </div>
-  );
-}
+import { ALL_STATUSES } from './taskBoardConfig';
 
 // ── Swimlane Header ───────────────────────────────────────────────────────────
 
@@ -50,14 +34,10 @@ export function KanbanAdminView({
     });
   }, [tasks]);
 
-  const countByStatus = (s: TareaStatus) => tasks.filter((t) => t.status === s).length;
-
   return (
     <div className="overflow-x-auto kanban-scroll -mx-1 px-1 pb-2">
-      <div className="grid grid-cols-3 gap-3 mb-4 sticky top-0 z-10 py-1" style={{ background: 'var(--background)' }}>
-        {ALL_STATUSES.map((s) => <ColumnHeader key={s} status={s} count={countByStatus(s)} />)}
-      </div>
-      <div className="space-y-4">
+      {/* min-w-[640px] → cada columna ≥ 200px; overflow-x-auto del padre maneja el scroll en móvil */}
+      <div className="space-y-4 min-w-[640px]">
         {proyectos.map(({ id, nombre, tasks: pt }) => (
           <div key={id} className="border border-slate-200 dark:border-slate-700/60 rounded-xl overflow-hidden shadow-sm">
             <div className="grid grid-cols-3">
@@ -91,24 +71,20 @@ export function KanbanAdminView({
 export function KanbanUserView({
   tasks, onCardClick,
 }: { tasks: TaskWithMeta[]; onCardClick: (t: TaskWithMeta) => void }) {
-  const countByStatus = (s: TareaStatus) => tasks.filter((t) => t.status === s).length;
   return (
     <div className="overflow-x-auto kanban-scroll -mx-1 px-1 pb-2">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 min-w-[520px]">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {ALL_STATUSES.map((status) => {
           const cards = tasks.filter((t) => t.status === status);
           return (
-            <div key={status} className="flex flex-col gap-3">
-              <ColumnHeader status={status} count={countByStatus(status)} />
-              <div className="flex flex-col gap-2">
-                {cards.length === 0 ? (
-                  <div className="border-2 border-dashed border-slate-200 dark:border-slate-700/60 rounded-xl p-6 text-center">
-                    <p className="text-xs text-slate-400">Sin tareas</p>
-                  </div>
-                ) : (
-                  cards.map((t) => <KanbanCard key={t.id} t={t} onClick={() => onCardClick(t)} />)
-                )}
-              </div>
+            <div key={status} className="flex flex-col gap-2">
+              {cards.length === 0 ? (
+                <div className="border-2 border-dashed border-slate-200 dark:border-slate-700/60 rounded-xl p-6 text-center">
+                  <p className="text-xs text-slate-400">Sin tareas</p>
+                </div>
+              ) : (
+                cards.map((t) => <KanbanCard key={t.id} t={t} onClick={() => onCardClick(t)} />)
+              )}
             </div>
           );
         })}

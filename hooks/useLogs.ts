@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { authFetch } from '@/lib/api';
 import { useSocket } from './useSocket';
 
@@ -61,6 +61,8 @@ export function useLogs() {
   const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
   const [loading, setLoading]       = useState(true);
   const [filters, setFilters]       = useState<LogFilters>({ accion: 'Todas', modulo: 'Todos', q: '', page: 1 });
+  const filtersRef = useRef(filters);
+  useEffect(() => { filtersRef.current = filters; }, [filters]);
 
   const fetchLogs = useCallback(async (f: LogFilters) => {
     setLoading(true);
@@ -103,14 +105,19 @@ export function useLogs() {
     if (!socket) return;
 
     const onNewLog = (entry: LogEntry) => {
-      // Only prepend to list when on page 1 with no active filters
-      setLogs((prev) => {
-        const withNew = [{ ...entry, isNew: true }, ...prev].slice(0, LIMIT);
-        setTimeout(() => {
-          setLogs((p) => p.map((l) => l.id === entry.id ? { ...l, isNew: false } : l));
-        }, 2500);
-        return withNew;
-      });
+      const f = filtersRef.current;
+      const noFiltros = f.accion === 'Todas' && f.modulo === 'Todos' && !f.q.trim() && f.page === 1;
+      if (noFiltros) {
+        // Sin filtros activos → prepend en tiempo real con highlight
+        setLogs((prev) => {
+          const withNew = [{ ...entry, isNew: true }, ...prev].slice(0, LIMIT);
+          setTimeout(() => {
+            setLogs((p) => p.map((l) => l.id === entry.id ? { ...l, isNew: false } : l));
+          }, 2500);
+          return withNew;
+        });
+      }
+      // Siempre actualizar contadores y stats
       setTotal((t) => t + 1);
       setStats((prev) => ({
         ...prev,

@@ -9,6 +9,7 @@ import {
   ReactNode,
 } from 'react';
 import { authFetch } from '@/lib/api';
+import { useSocket } from '@/hooks/useSocket';
 import type { MockProject } from '@/lib/mockData';
 
 // Re-exportamos MockProject como alias semántico mientras se unifica la tipología
@@ -35,6 +36,7 @@ const ProjectStoreContext = createContext<ProjectStoreCtx>({
 });
 
 export function ProjectStoreProvider({ children }: { children: ReactNode }) {
+  const socket = useSocket();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
@@ -57,9 +59,14 @@ export function ProjectStoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Sincronización en tiempo real: cualquier mutación de proyecto emite project_changed
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (!socket) return;
+    socket.on('project_changed', refresh);
+    return () => { socket.off('project_changed', refresh); };
+  }, [socket, refresh]);
 
   // ── Crear proyecto via API ───────────────────────────────────────────────
   const createProject = useCallback(async (p: Project) => {

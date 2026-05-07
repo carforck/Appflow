@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTaskStore } from '@/context/TaskStoreContext';
 import { useProjectStore } from '@/context/ProjectStoreContext';
-import { useNotifications } from '@/context/NotificationContext';
 import { useToast } from '@/components/Toast';
 import type { TareaPrioridad, MockUser } from '@/lib/mockData';
 import { useUsuarios } from '@/hooks/useUsuarios';
@@ -25,7 +24,6 @@ const today = () => new Date().toISOString().split('T')[0];
 export default function NewTaskModal({ onClose }: Props) {
   const { refresh } = useTaskStore();
   const { projects } = useProjectStore();
-  const { addNotification } = useNotifications();
   const { addToast } = useToast();
 
   // Form state
@@ -105,12 +103,6 @@ export default function NewTaskModal({ onClose }: Props) {
       }
 
       await refresh();
-
-      addNotification({
-        tipo:    'asignacion',
-        titulo:  'Nueva tarea asignada',
-        mensaje: `Se asignó "${descripcion.slice(0, 50)}" a ${selectedUser.nombre_completo}`,
-      });
       addToast(`Tarea creada y asignada a ${selectedUser.nombre_completo}`, 'success');
       onClose();
     } catch {

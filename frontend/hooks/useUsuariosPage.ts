@@ -63,8 +63,31 @@ export function useUsuariosPage() {
     setModalUser(undefined);
   };
 
-  const handleToggleActivo = (correo: string) => {
-    setUsers((prev) => prev.map((u) => (u.correo === correo ? { ...u, activo: !u.activo } : u)));
+  const handleToggleActivo = async (correo: string) => {
+    const prev = users.find((u) => u.correo === correo);
+    if (!prev) return;
+
+    // Optimistic update
+    setUsers((list) => list.map((u) => (u.correo === correo ? { ...u, activo: !u.activo } : u)));
+
+    try {
+      const res = await authFetch(`/users/${encodeURIComponent(correo)}/activo`, { method: 'PATCH' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        // Revertir si falló
+        setUsers((list) => list.map((u) => (u.correo === correo ? { ...u, activo: prev.activo } : u)));
+        addToast(data.error ?? 'Error al cambiar estado del usuario', 'error');
+        return;
+      }
+      const data = await res.json() as { activo: boolean };
+      addToast(
+        data.activo ? 'Usuario habilitado correctamente' : 'Usuario inhabilitado. Su sesión fue cerrada.',
+        data.activo ? 'success' : 'info',
+      );
+    } catch {
+      setUsers((list) => list.map((u) => (u.correo === correo ? { ...u, activo: prev.activo } : u)));
+      addToast('Error de conexión al cambiar estado', 'error');
+    }
   };
 
   const handleDelete = async (correo: string) => {

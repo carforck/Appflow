@@ -20,7 +20,7 @@ async function login(req, res) {
 
   try {
     const [rows] = await pool.query(
-      'SELECT email, nombre_complete, role, password FROM users WHERE email = ?',
+      'SELECT email, nombre_complete, role, password, activo FROM users WHERE email = ?',
       [correo]
     );
 
@@ -31,6 +31,12 @@ async function login(req, res) {
     }
 
     const u = rows[0];
+
+    // Cuenta inhabilitada
+    if (!u.activo) {
+      console.warn(`🚫 Login bloqueado (cuenta inhabilitada): ${correo} | IP: ${ip}`);
+      return res.status(403).json({ error: 'Tu cuenta ha sido desactivada. Contacta al administrador.' });
+    }
 
     // Contraseña incorrecta
     const valid = await bcrypt.compare(password, u.password);

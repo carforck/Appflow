@@ -17,16 +17,16 @@ async function getUsers(req, res) {
     let rows;
     if (role === 'superadmin' || role === 'admin') {
       [rows] = await pool.query(
-        'SELECT email, nombre_complete AS nombre_completo, role FROM users ORDER BY nombre_complete ASC'
+        'SELECT email, nombre_complete AS nombre_completo, role, activo FROM users ORDER BY nombre_complete ASC'
       );
     } else {
       [rows] = await pool.query(
-        'SELECT email, nombre_complete AS nombre_completo, role FROM users WHERE email = ?',
+        'SELECT email, nombre_complete AS nombre_completo, role, activo FROM users WHERE email = ?',
         [email]
       );
     }
 
-    const users = rows.map((u) => ({ ...u, activo: true }));
+    const users = rows.map((u) => ({ ...u, activo: Boolean(u.activo) }));
     console.log(`👥 GET /users → ${users.length} usuarios (${role}: ${email})`);
     res.json({ status: 'success', total: users.length, users });
   } catch (err) {
@@ -105,4 +105,40 @@ async function updateUserRole(req, res) {
   }
 }
 
-module.exports = { getUsers, deleteUser, updateUserRole };
+async function toggleActivo(req, res) {
+  const { correo }                                     = req.params;
+  const { email: requesterEmail, role: requesterRole } = req.user;
+  const targetEmail                                    = decodeURIComponent(correo);
+
+  if (targetEmail === requesterEmail) {
+    return res.status(400).json({ error: 'No puedes inhabilitar tu propia cuenta' });
+  }
+
+  try {
+    const [[target]] = await pool.query(
+      'SELECT email, role, activo FROM users WHERE email = ?',
+      [targetEmail]
+    );
+    if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    if (target.role === 'superadmin' && requesterRole !== 'superadmin') {
+      return res.status(403).json({ error: 'Solo un superadmin puede inhabilitar otro superadmin' });
+    }
+
+    const nuevoActivo = target.activo ? 0 : 1;
+    await pool.query('UPDATE users SET activo = ? WHERE email = ?', [nuevoActivo, targetEmail]);
+
+    if (nuevoActivo === 0) {
+      getIo()?.to(`user_${targetEmail}`).emit('user_force_logout');
+    }
+
+    const accion = nuevoActivo ? 'Habilitado' : 'Inhabilitado';
+    console.log(`🔒 Usuario ${targetEmail} ${accion.toLowerCase()} por ${requesterEmail}`);
+    res.json({ status: 'updated', email: targetEmail, activo: Boolean(nuevoActivo) });
+  } catch (err) {
+    console.error('❌ PATCH /users/:correo/activo:', err.message);
+    res.status(500).json({ error: 'Error al actualizar estado', detalle: err.message });
+  }
+}
+
+module.exports = { getUsers, deleteUser, updateUserRole, toggleActivo };

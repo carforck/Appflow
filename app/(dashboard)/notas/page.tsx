@@ -227,13 +227,20 @@ const ROLE_RANK: Record<string, number> = { superadmin: 3, admin: 2, user: 1 };
 
 export default function NotasPage() {
   const { user }  = useAuth();
-  const { tasks } = useTaskStore();
+  const { tasks, refresh: refreshTasks } = useTaskStore();
   const isAdmin   = ROLE_RANK[user?.role ?? 'user'] >= 2;
 
   const { unreadByTask, clearForTask, setActiveTaskId }      = useNotasUnread();
   const { resumen, loading: loadingResumen, refreshResumen } = useNotasResumen();
 
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+
+  // Si resumen tiene tareas que aún no están en el store (race condition al crear tarea nueva),
+  // forzar refresh para que chatList pueda renderizarlas
+  useEffect(() => {
+    const taskIds = new Set(tasks.map((t) => t.id));
+    if (resumen.some((r) => !taskIds.has(r.id_tarea))) refreshTasks();
+  }, [resumen, tasks, refreshTasks]);
 
   const handleSelectTask = (id: number) => {
     setSelectedTaskId(id);

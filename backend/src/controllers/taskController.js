@@ -118,7 +118,13 @@ async function crearTarea(req, res) {
            VALUES ('asignacion', 'Nueva tarea asignada', ?, ?, ?)`,
           [`Se te ha asignado una nueva tarea en el Proyecto "${proyNombre}"`, taskId, responsable_correo]
         );
-        emitNotifAlert(responsable_correo, { tipo: 'asignacion', id_tarea: taskId });
+        emitNotifAlert(responsable_correo, {
+          tipo:    'asignacion',
+          id_tarea: taskId,
+          titulo:  'Nueva tarea asignada',
+          preview: `${tarea_descripcion.trim().slice(0, 100)} — Proyecto: ${proyNombre}`,
+          autor:   req.user.nombre ?? req.user.email,
+        });
       }
       await pool.query(
         `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
@@ -131,6 +137,20 @@ async function crearTarea(req, res) {
     }
 
     emitTaskCreated();
+
+    if (responsable_correo) {
+      queueApprovedTask({
+        destinatario_correo: responsable_correo,
+        destinatario_nombre: responsable_nombre || responsable_correo,
+        id_tarea:          taskId,
+        tarea_descripcion: tarea_descripcion.trim(),
+        proyecto_nombre:   proyNombre,
+        prioridad,
+        fecha_entrega,
+      })
+        .then(() => scheduleEmailSend())
+        .catch((e) => console.error(`⚠️ queueApprovedTask crearTarea #${taskId}:`, e.message));
+    }
 
     console.log(`✅ POST /tareas/crear → id=${taskId} proyecto=${id_proyecto}`);
     logActivity({

@@ -42,8 +42,27 @@ export function useTour() {
           element: `#${pfx}tareas`,
           popover: {
             title:       '📋 Tareas',
-            description: 'Aquí están todas tus tareas asignadas. Puedes verlas en tablero Kanban, filtrar por prioridad y cambiar su estado tocando cualquier tarjeta.',
+            description: 'Aquí están todas tus tareas asignadas en un tablero Kanban dividido en tres columnas.',
             side,
+          },
+        },
+        {
+          popover: {
+            title:       '↕️ ¿Cómo cambiar el estado de una tarea?',
+            description: `
+              <ol style="padding-left:16px;margin:6px 0;line-height:1.7">
+                <li>Toca cualquier tarjeta del tablero para abrirla.</li>
+                <li>Dentro verás el selector de estado en la parte superior.</li>
+                <li>Elige el estado que corresponda:</li>
+              </ol>
+              <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;font-size:12px">
+                <span>⚪ <b>Por Hacer</b> — tarea pendiente de iniciar</span>
+                <span>🔵 <b>En Progreso</b> — tarea en curso</span>
+                <span>🟢 <b>Completada</b> — tarea finalizada</span>
+              </div>
+              ${isMobile ? '<p style="margin-top:10px;font-size:11px;color:#94a3b8">💡 En móvil usa los botones de columna para ver solo un estado a la vez.</p>' : ''}
+            `,
+            align: 'center',
           },
         },
         {

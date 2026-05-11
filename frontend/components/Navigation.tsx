@@ -196,6 +196,7 @@ export default function Navigation() {
         return (
           <Link
             key={item.href}
+            id={`tour-${item.href.slice(1)}`}
             href={item.href}
             onClick={onItemClick}
             title={collapsed && !forceExpanded ? item.label : undefined}
@@ -293,6 +294,7 @@ export default function Navigation() {
         <div className={`pt-4 border-t border-slate-200 dark:border-slate-700/50 space-y-2`}>
           {/* Bell de notificaciones */}
           <button
+            id="tour-bell"
             onClick={() => setNotifOpen((o) => !o)}
             title="Notificaciones"
             className={`w-full flex items-center gap-3 rounded-[12px] text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors ${
@@ -386,6 +388,7 @@ export default function Navigation() {
         <div className="flex items-center gap-1">
           {/* Bell mobile */}
           <button
+            id="tour-m-bell"
             onClick={() => setNotifOpen((o) => !o)}
             className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
@@ -497,6 +500,7 @@ export default function Navigation() {
         {navItems.slice(0, 5).map((item) => (
           <Link
             key={item.href}
+            id={`tour-m-${item.href.slice(1)}`}
             href={item.href}
             className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-[12px] transition-colors ${
               isActive(item.href)

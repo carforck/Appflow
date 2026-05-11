@@ -42,7 +42,7 @@ async function getTareas(req, res) {
     const { email, role }         = req.user;
 
     const page   = Math.max(1, parseInt(req.query.page  ?? '1',  10));
-    const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit ?? '100', 10)));
+    const limit  = Math.min(500, Math.max(1, parseInt(req.query.limit ?? '500', 10)));
     const offset = (page - 1) * limit;
 
     let query = `
@@ -70,7 +70,13 @@ async function getTareas(req, res) {
     if (prioridad)       { query += ' AND t.prioridad = ?';          params.push(prioridad); }
     if (proyecto)        { query += ' AND t.id_proyecto = ?';        params.push(proyecto); }
 
-    query += ' ORDER BY t.fecha_entrega ASC, t.id DESC LIMIT ? OFFSET ?';
+    // Tareas activas primero (no Completada), luego por fecha ASC — garantiza que
+    // las nuevas tareas activas siempre aparezcan dentro del límite
+    query += ` ORDER BY
+      CASE WHEN t.estado_tarea = 'Completada' THEN 1 ELSE 0 END ASC,
+      t.fecha_entrega ASC,
+      t.id DESC
+      LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
     const [rows] = await pool.query(query, params);

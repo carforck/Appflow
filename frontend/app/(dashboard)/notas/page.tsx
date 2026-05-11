@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { Suspense, useState, useMemo, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTaskStore, TaskWithMeta } from '@/context/TaskStoreContext';
 import { useTaskNotes, TaskNota } from '@/hooks/useTaskNotes';
@@ -225,7 +226,10 @@ function ChatPanel({ task, userEmail, onNoteSent, clearForTask }: {
 // ── Página ─────────────────────────────────────────────────────────────────────
 const ROLE_RANK: Record<string, number> = { superadmin: 3, admin: 2, user: 1 };
 
-export default function NotasPage() {
+function NotasContent() {
+  const searchParams = useSearchParams();
+  const openId       = searchParams.get('open');
+
   const { user }  = useAuth();
   const { tasks, refresh: refreshTasks } = useTaskStore();
   const isAdmin   = ROLE_RANK[user?.role ?? 'user'] >= 2;
@@ -235,11 +239,18 @@ export default function NotasPage() {
 
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
 
+  // Guard: evitar loop infinito si el store no devuelve la tarea (e.g. >500 tasks)
+  const refreshingRef = useRef(false);
+
   // Si resumen tiene tareas que aún no están en el store (race condition al crear tarea nueva),
-  // forzar refresh para que chatList pueda renderizarlas
+  // forzar refresh para que chatList pueda renderizarlas — una sola vez por ausencia
   useEffect(() => {
+    if (refreshingRef.current) return;
     const taskIds = new Set(tasks.map((t) => t.id));
-    if (resumen.some((r) => !taskIds.has(r.id_tarea))) refreshTasks();
+    if (resumen.some((r) => !taskIds.has(r.id_tarea))) {
+      refreshingRef.current = true;
+      refreshTasks().finally(() => { refreshingRef.current = false; });
+    }
   }, [resumen, tasks, refreshTasks]);
 
   const handleSelectTask = (id: number) => {
@@ -247,12 +258,6 @@ export default function NotasPage() {
     setActiveTaskId(id);
     if (unreadByTask[id]) clearForTask(id);
   };
-
-  // Limpiar chat activo al abandonar la página
-  useEffect(() => {
-    return () => { setActiveTaskId(null); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const chatList = useMemo(() => {
     const taskMap = new Map(tasks.map((t) => [t.id, t]));
@@ -265,6 +270,24 @@ export default function NotasPage() {
         return b.last_message_at.localeCompare(a.last_message_at);
       });
   }, [resumen, tasks, unreadByTask]);
+
+  // Auto-abrir tarea desde URL param ?open=id (click en notificación toast)
+  const lastOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openId || openId === lastOpenedRef.current) return;
+    const taskId = parseInt(openId, 10);
+    if (chatList.some((c) => c.id_tarea === taskId)) {
+      lastOpenedRef.current = openId;
+      handleSelectTask(taskId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, chatList]);
+
+  // Limpiar chat activo al abandonar la página
+  useEffect(() => {
+    return () => { setActiveTaskId(null); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
   const unreadItems  = chatList.filter((c) => c.unread > 0);
@@ -349,5 +372,13 @@ export default function NotasPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function NotasPage() {
+  return (
+    <Suspense fallback={null}>
+      <NotasContent />
+    </Suspense>
   );
 }

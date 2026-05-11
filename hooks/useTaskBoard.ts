@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTaskStore, TaskWithMeta } from '@/context/TaskStoreContext';
-import type { TareaPrioridad } from '@/lib/mockData';
+import type { TareaPrioridad, TareaStatus } from '@/lib/mockData';
 
 export type TaskBoardTab = 'board' | 'historial' | 'lista';
 
@@ -18,6 +18,7 @@ export interface TaskBoardState {
   tab:             TaskBoardTab;
   searchText:      string;
   filterPrioridad: TareaPrioridad | 'Todas';
+  filterStatus:    TareaStatus | 'Todas';
   newTaskOpen:     boolean;
   modalTask:       TaskWithMeta | null;
   chatFocus:       boolean;
@@ -25,6 +26,7 @@ export interface TaskBoardState {
   setTab:             (t: TaskBoardTab) => void;
   setSearchText:      (s: string) => void;
   setFilterPrioridad: (p: TareaPrioridad | 'Todas') => void;
+  setFilterStatus:    (s: TareaStatus | 'Todas') => void;
   openModal:          (t: TaskWithMeta) => void;
   closeModal:         () => void;
   setNewTaskOpen:     (v: boolean) => void;
@@ -40,6 +42,7 @@ export function useTaskBoard(initialOpenId?: string | null, initialFocus?: strin
   const [tab,             setTab]             = useState<TaskBoardTab>('board');
   const [searchText,      setSearchText]      = useState('');
   const [filterPrioridad, setFilterPrioridad] = useState<TareaPrioridad | 'Todas'>('Todas');
+  const [filterStatus,    setFilterStatus]    = useState<TareaStatus | 'Todas'>('Todas');
   const [selectedTask,    setSelectedTask]    = useState<TaskWithMeta | null>(null);
   const [newTaskOpen,     setNewTaskOpen]     = useState(false);
   const [chatFocus,       setChatFocus]       = useState(false);
@@ -88,7 +91,7 @@ export function useTaskBoard(initialOpenId?: string | null, initialFocus?: strin
 
   return {
     filtered, activeTasks, completedCount, isAdmin,
-    tab, searchText, filterPrioridad, newTaskOpen, modalTask, chatFocus,
-    setTab, setSearchText, setFilterPrioridad, openModal, closeModal, setNewTaskOpen, setChatFocus,
+    tab, searchText, filterPrioridad, filterStatus, newTaskOpen, modalTask, chatFocus,
+    setTab, setSearchText, setFilterPrioridad, setFilterStatus, openModal, closeModal, setNewTaskOpen, setChatFocus,
   };
 }

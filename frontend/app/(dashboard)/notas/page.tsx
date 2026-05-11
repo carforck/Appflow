@@ -260,9 +260,10 @@ export default function NotasPage() {
   }, [resumen, tasks, unreadByTask]);
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
-  const totalUnread  = Object.values(unreadByTask).reduce((s, n) => s + n, 0);
   const unreadItems  = chatList.filter((c) => c.unread > 0);
   const historyItems = chatList.filter((c) => c.unread === 0);
+  // Contar solo desde los items visibles — evita badges fantasma por tasks fuera del resumen
+  const totalUnread  = unreadItems.reduce((s, c) => s + c.unread, 0);
 
   return (
     <div className="space-y-4">

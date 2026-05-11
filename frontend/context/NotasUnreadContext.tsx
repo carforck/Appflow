@@ -30,6 +30,8 @@ export function NotasUnreadProvider({ children }: { children: ReactNode }) {
   const socket                     = useSocket();
   const [unreadByTask, setUnreadByTask] = useState<Record<number, number>>({});
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
+  const activeTaskIdRef = useRef<number | null>(null);
+  useEffect(() => { activeTaskIdRef.current = activeTaskId; }, [activeTaskId]);
   // Tracks task IDs whose clear PATCH is still in-flight — fetchUnread skips them
   const clearingRef = useRef<Set<number>>(new Set());
 
@@ -53,8 +55,14 @@ export function NotasUnreadProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!socket) return;
-    const onAlert = (payload: { tipo?: string }) => {
-      if (payload?.tipo === 'nota') fetchUnread();
+    const onAlert = (payload: { tipo?: string; id_tarea?: number }) => {
+      if (payload?.tipo !== 'nota') return;
+      // Actualización optimista: subir el badge inmediatamente sin esperar el HTTP
+      const taskId = payload.id_tarea;
+      if (taskId && activeTaskIdRef.current !== taskId && !clearingRef.current.has(taskId)) {
+        setUnreadByTask((prev) => ({ ...prev, [taskId]: (prev[taskId] ?? 0) + 1 }));
+      }
+      fetchUnread(); // sincroniza con BD para confirmar el conteo exacto
     };
     socket.on('notification_alert', onAlert);
     return () => { socket.off('notification_alert', onAlert); };

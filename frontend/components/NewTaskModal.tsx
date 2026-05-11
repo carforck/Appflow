@@ -22,7 +22,7 @@ const PRIORIDAD_COLOR: Record<TareaPrioridad, string> = {
 const today = () => new Date().toISOString().split('T')[0];
 
 export default function NewTaskModal({ onClose }: Props) {
-  const { refresh } = useTaskStore();
+  const { refresh, createTask } = useTaskStore();
   const { projects } = useProjectStore();
   const { addToast } = useToast();
 
@@ -102,9 +102,21 @@ export default function NewTaskModal({ onClose }: Props) {
         return;
       }
 
-      await refresh();
+      // Optimistic: agrega la tarea al board inmediatamente con ID temporal
+      // El socket task_created reemplazará el ID temporal con el real vía refresh()
+      createTask({
+        id_proyecto:        proyectoId,
+        nombre_proyecto:    selectedProject.nombre_proyecto,
+        tarea_descripcion:  descripcion.trim(),
+        responsable_nombre: selectedUser.nombre_completo,
+        responsable_correo: selectedUser.correo,
+        prioridad,
+        fecha_inicio:       fechaInicio,
+        fecha_entrega:      fechaEntrega,
+      });
       addToast(`Tarea creada y asignada a ${selectedUser.nombre_completo}`, 'success');
       onClose();
+      refresh().catch(() => {});
     } catch {
       addToast('No se pudo conectar con el servidor', 'error');
     } finally {

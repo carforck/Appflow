@@ -14,10 +14,15 @@ function ToastCard({ item, onDismiss }: { item: NotifToastItem; onDismiss: () =>
     return () => clearTimeout(t);
   }, []);
 
+  const isNota    = item.tipo === 'nota';
+  const icon      = isNota ? '💬' : '📋';
+  const categoria = isNota ? 'Alzak Flow · Notas' : 'Alzak Flow · Tareas';
+  const destino   = isNota ? '/notas' : '/tareas';
+
   const handleClick = useCallback(() => {
     onDismiss();
-    router.push('/notas');
-  }, [onDismiss, router]);
+    router.push(destino);
+  }, [onDismiss, router, destino]);
 
   const visible = enter && !item.exiting;
 
@@ -25,7 +30,7 @@ function ToastCard({ item, onDismiss }: { item: NotifToastItem; onDismiss: () =>
     <div
       role="button"
       tabIndex={0}
-      aria-label={`Nota: ${item.titulo}`}
+      aria-label={`${categoria}: ${item.titulo}`}
       onClick={handleClick}
       onKeyDown={(e) => e.key === 'Enter' && handleClick()}
       className={`
@@ -50,14 +55,14 @@ function ToastCard({ item, onDismiss }: { item: NotifToastItem; onDismiss: () =>
     >
       {/* Ícono de la app */}
       <div className="shrink-0 w-10 h-10 rounded-[12px] bg-alzak-blue flex items-center justify-center text-white text-lg shadow-sm">
-        💬
+        {icon}
       </div>
 
       {/* Contenido */}
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline justify-between gap-2">
           <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide truncate">
-            Alzak Flow · Notas
+            {categoria}
           </p>
           <span className="text-[10px] text-slate-400 shrink-0">ahora</span>
         </div>

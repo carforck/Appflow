@@ -7,6 +7,7 @@ import { useNotasUnread } from '@/context/NotasUnreadContext';
 
 export interface NotifToastItem {
   id:        string;
+  tipo:      'nota' | 'asignacion';
   titulo:    string;
   preview:   string;
   autor:     string;
@@ -72,17 +73,25 @@ export function useNotifToast() {
       autor?:        string;
       autor_correo?: string;
     }) => {
-      if (payload?.tipo !== 'nota') return;
-      // No mostrar toast del propio mensaje enviado
-      if (payload.autor_correo && payload.autor_correo === user.email) return;
-      // No mostrar toast si el usuario ya está viendo ese chat
-      if (payload.id_tarea != null && payload.id_tarea === activeTaskId) return;
-      addToast({
-        titulo:   payload.titulo   ?? 'Nueva nota',
-        preview:  payload.preview  ?? '',
-        autor:    payload.autor    ?? '',
-        id_tarea: payload.id_tarea ?? 0,
-      });
+      if (payload?.tipo === 'nota') {
+        if (payload.autor_correo && payload.autor_correo === user.email) return;
+        if (payload.id_tarea != null && payload.id_tarea === activeTaskId) return;
+        addToast({
+          tipo:     'nota',
+          titulo:   payload.titulo  ?? 'Nueva nota',
+          preview:  payload.preview ?? '',
+          autor:    payload.autor   ?? '',
+          id_tarea: payload.id_tarea ?? 0,
+        });
+      } else if (payload?.tipo === 'asignacion') {
+        addToast({
+          tipo:     'asignacion',
+          titulo:   payload.titulo  ?? 'Nueva tarea asignada',
+          preview:  payload.preview ?? '',
+          autor:    payload.autor   ?? '',
+          id_tarea: payload.id_tarea ?? 0,
+        });
+      }
     };
     socket.on('notification_alert', handler);
     return () => { socket.off('notification_alert', handler); };

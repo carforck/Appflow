@@ -30,8 +30,6 @@ export function NotasUnreadProvider({ children }: { children: ReactNode }) {
   const socket                     = useSocket();
   const [unreadByTask, setUnreadByTask] = useState<Record<number, number>>({});
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
-  const activeTaskIdRef = useRef<number | null>(null);
-  useEffect(() => { activeTaskIdRef.current = activeTaskId; }, [activeTaskId]);
   // Tracks task IDs whose clear PATCH is still in-flight — fetchUnread skips them
   const clearingRef = useRef<Set<number>>(new Set());
 
@@ -41,9 +39,8 @@ export function NotasUnreadProvider({ children }: { children: ReactNode }) {
       const res = await authFetch('/api/notifications/notas-sin-leer');
       if (!res.ok) return;
       const data = await res.json();
-      setUnreadByTask((prev) => {
-        const incoming: Record<number, number> = data.unread ?? {};
-        const next = { ...incoming };
+      setUnreadByTask(() => {
+        const next: Record<number, number> = { ...(data.unread ?? {}) };
         // Don't overwrite tasks whose clear PATCH is still in flight
         Array.from(clearingRef.current).forEach((id) => delete next[id]);
         return next;
@@ -55,14 +52,8 @@ export function NotasUnreadProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!socket) return;
-    const onAlert = (payload: { tipo?: string; id_tarea?: number }) => {
-      if (payload?.tipo !== 'nota') return;
-      // Actualización optimista: subir el badge inmediatamente sin esperar el HTTP
-      const taskId = payload.id_tarea;
-      if (taskId && activeTaskIdRef.current !== taskId && !clearingRef.current.has(taskId)) {
-        setUnreadByTask((prev) => ({ ...prev, [taskId]: (prev[taskId] ?? 0) + 1 }));
-      }
-      fetchUnread(); // sincroniza con BD para confirmar el conteo exacto
+    const onAlert = (payload: { tipo?: string }) => {
+      if (payload?.tipo === 'nota') fetchUnread();
     };
     socket.on('notification_alert', onAlert);
     return () => { socket.off('notification_alert', onAlert); };

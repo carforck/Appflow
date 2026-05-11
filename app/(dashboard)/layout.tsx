@@ -14,6 +14,7 @@ import { UserStoreProvider } from '@/context/UserStoreContext';
 import Navigation from '@/components/Navigation';
 import { useNotifToast } from '@/hooks/useNotifToast';
 import { NotifToastContainer } from '@/components/ui/NotifToast';
+import { useTour } from '@/hooks/useTour';
 
 function NotifToastLayer() {
   const { toasts, dismiss } = useNotifToast();
@@ -22,6 +23,7 @@ function NotifToastLayer() {
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
+  useTour();
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       <Navigation />

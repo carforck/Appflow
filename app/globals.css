@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import 'driver.js/dist/driver.css';
 
 /* ── CSS Variables ─────────────────────────────────────────────────────────── */
 :root {
@@ -77,4 +78,72 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* ── Driver.js tour — estilos Alzak Flow ──────────────────────────────────── */
+.alzak-tour-popover {
+  border-radius: 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22) !important;
+  padding: 20px 22px !important;
+  max-width: 320px !important;
+  background: rgba(255, 255, 255, 0.97) !important;
+  backdrop-filter: blur(24px) !important;
+}
+.alzak-tour-popover .driver-popover-title {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: #1a365d !important;
+  margin-bottom: 6px !important;
+}
+.alzak-tour-popover .driver-popover-description {
+  font-size: 13px !important;
+  color: #475569 !important;
+  line-height: 1.55 !important;
+}
+.alzak-tour-popover .driver-popover-progress-text {
+  font-size: 11px !important;
+  color: #94a3b8 !important;
+}
+.alzak-tour-popover .driver-popover-footer button {
+  border-radius: 10px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 6px 14px !important;
+  transition: opacity 0.15s !important;
+}
+.alzak-tour-popover .driver-popover-next-btn,
+.alzak-tour-popover .driver-popover-done-btn {
+  background: #1a365d !important;
+  color: #fff !important;
+  border: none !important;
+}
+.alzak-tour-popover .driver-popover-prev-btn {
+  background: transparent !important;
+  color: #64748b !important;
+  border: 1px solid #e2e8f0 !important;
+}
+.alzak-tour-popover .driver-popover-close-btn {
+  color: #94a3b8 !important;
+  font-size: 18px !important;
+}
+/* Dark mode */
+.dark .alzak-tour-popover {
+  background: rgba(15, 23, 42, 0.97) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+.dark .alzak-tour-popover .driver-popover-title {
+  color: #eab308 !important;
+}
+.dark .alzak-tour-popover .driver-popover-description {
+  color: #94a3b8 !important;
+}
+.dark .alzak-tour-popover .driver-popover-next-btn,
+.dark .alzak-tour-popover .driver-popover-done-btn {
+  background: #eab308 !important;
+  color: #0f172a !important;
+}
+.dark .alzak-tour-popover .driver-popover-prev-btn {
+  border-color: #334155 !important;
+  color: #94a3b8 !important;
 }

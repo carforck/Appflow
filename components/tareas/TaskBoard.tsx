@@ -130,7 +130,7 @@ export function TaskBoard(props: TaskBoardState) {
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-alzak-blue/50 ${cfg.headerCls} ${isActive ? 'ring-2 ring-alzak-blue/50 dark:ring-alzak-gold/50 shadow-md scale-[1.03]' : 'sm:hover:shadow-sm'}`}
                 >
                   <span className="text-sm">{cfg.icon}</span>
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-100 hidden sm:inline truncate">{cfg.label}</span>
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-100 truncate">{cfg.label}</span>
                   <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${cfg.countCls}`}>{count}</span>
                 </button>
               );

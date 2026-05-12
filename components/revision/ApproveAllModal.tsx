@@ -26,7 +26,7 @@ export function ApproveAllModal({ tasks, onConfirm, onCancel, loading }: Props) 
       aria-modal="true"
       aria-labelledby="approve-modal-title"
     >
-      <div className="bg-white dark:bg-slate-800 rounded-[24px] shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6 space-y-5">
+      <div className="bg-white dark:bg-slate-800 rounded-[24px] shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md p-6 space-y-5 max-h-[90vh] overflow-y-auto kanban-scroll">
 
         {/* Header */}
         <div className="flex items-center gap-3">

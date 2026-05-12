@@ -103,13 +103,13 @@ export default function RevisionRow({
     setEditProjectNombre(true); setProjectSearchNombre('');
   };
 
-  const filteredUsers = users
-    .filter((u) => u.activo && (
+  const filteredUsers = users.filter((u) =>
+    u.activo && (
       !userSearch ||
       u.nombre_completo.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.correo.toLowerCase().includes(userSearch.toLowerCase())
-    ))
-    .slice(0, 6);
+    )
+  );
 
   const saveDesc = async () => {
     if (desc === task.tarea_descripcion) return;
@@ -285,7 +285,7 @@ export default function RevisionRow({
             />
           )}
           {showUsers && filteredUsers.length > 0 && (
-            <div className="absolute z-20 left-0 top-full mt-1 w-52 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden">
+            <div className="absolute z-20 left-0 top-full mt-1 w-52 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl max-h-52 overflow-y-auto kanban-scroll">
               {filteredUsers.map((u) => (
                 <button
                   key={u.correo}

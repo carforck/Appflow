@@ -327,7 +327,7 @@ async function crearTareaRevision(req, res) {
         responsable_nombre || null,
         responsable_correo || null,
         prioFinal,
-        fecha_inicio  || null,
+        fecha_inicio  || new Date().toISOString().slice(0, 10),
         fechaFinal,
       ]
     );
@@ -388,13 +388,16 @@ async function commitStaging(req, res) {
         ? fechaDate.toISOString().slice(0, 10)
         : (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10); })();
 
+      const fechaInicioRevision = new Date().toISOString().slice(0, 10);
+
       const [res2] = await pool.query(
         `INSERT INTO tasks (id_meeting, id_proyecto, tarea_descripcion, responsable_nombre,
-          responsable_correo, prioridad, fecha_entrega, estado_tarea)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendiente Revisión')`,
+          responsable_correo, prioridad, fecha_inicio, fecha_entrega, estado_tarea)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente Revisión')`,
         [meetingId, taskProject, (t.tarea_descripcion ?? '').trim() || '(sin descripción)',
          t.responsable_nombre || null, t.responsable_correo || null,
-         VALID_PRIORIDADES.includes(t.prioridad) ? t.prioridad : 'Media', fecha]
+         VALID_PRIORIDADES.includes(t.prioridad) ? t.prioridad : 'Media',
+         fechaInicioRevision, fecha]
       );
       taskIds.push(res2.insertId);
     }

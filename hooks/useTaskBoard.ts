@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTaskStore, TaskWithMeta } from '@/context/TaskStoreContext';
+import { authFetch } from '@/lib/api';
 import type { TareaPrioridad, TareaStatus } from '@/lib/mockData';
 
 export type TaskBoardTab = 'board' | 'historial' | 'lista';
@@ -30,6 +31,9 @@ export interface TaskBoardState {
   newTaskOpen:       boolean;
   modalTask:         TaskWithMeta | null;
   chatFocus:         boolean;
+  editTask:          TaskWithMeta | null;
+  deleteConfirm:     TaskWithMeta | null;
+  deletingId:        number | null;
   // Acciones
   setTab:               (t: TaskBoardTab) => void;
   setSearchText:        (s: string) => void;
@@ -41,6 +45,11 @@ export interface TaskBoardState {
   closeModal:           () => void;
   setNewTaskOpen:       (v: boolean) => void;
   setChatFocus:         (v: boolean) => void;
+  openEdit:             (t: TaskWithMeta) => void;
+  closeEdit:            () => void;
+  requestDelete:        (t: TaskWithMeta) => void;
+  cancelDelete:         () => void;
+  confirmDelete:        () => Promise<void>;
 }
 
 export function useTaskBoard(initialOpenId?: string | null, initialFocus?: string | null): TaskBoardState {
@@ -58,6 +67,9 @@ export function useTaskBoard(initialOpenId?: string | null, initialFocus?: strin
   const [selectedTask,      setSelectedTask]      = useState<TaskWithMeta | null>(null);
   const [newTaskOpen,       setNewTaskOpen]        = useState(false);
   const [chatFocus,         setChatFocus]          = useState(false);
+  const [editTask,          setEditTask]           = useState<TaskWithMeta | null>(null);
+  const [deleteConfirm,     setDeleteConfirm]      = useState<TaskWithMeta | null>(null);
+  const [deletingId,        setDeletingId]         = useState<number | null>(null);
   const lastOpenedId = useRef<string | null>(null);
 
   // Auto-open task from URL param (e.g. /tareas?open=42&focus=notas from a notification click)
@@ -76,6 +88,22 @@ export function useTaskBoard(initialOpenId?: string | null, initialFocus?: strin
 
   const openModal  = useCallback((t: TaskWithMeta) => { setChatFocus(false); setSelectedTask(t); }, []);
   const closeModal = useCallback(() => { setSelectedTask(null); setChatFocus(false); }, []);
+
+  const openEdit   = useCallback((t: TaskWithMeta) => setEditTask(t), []);
+  const closeEdit  = useCallback(() => setEditTask(null), []);
+
+  const requestDelete = useCallback((t: TaskWithMeta) => setDeleteConfirm(t), []);
+  const cancelDelete  = useCallback(() => setDeleteConfirm(null), []);
+  const confirmDelete = useCallback(async () => {
+    if (!deleteConfirm) return;
+    setDeletingId(deleteConfirm.id);
+    setDeleteConfirm(null);
+    try {
+      await authFetch(`/tareas/${deleteConfirm.id}`, { method: 'DELETE' });
+    } finally {
+      setDeletingId(null);
+    }
+  }, [deleteConfirm]);
 
   // Sync modal con la versión más reciente del store
   const modalTask = useMemo(
@@ -134,8 +162,10 @@ export function useTaskBoard(initialOpenId?: string | null, initialFocus?: strin
     proyectoOptions, responsableOptions,
     tab, searchText, filterPrioridad, filterStatus, filterProyecto, filterResponsable,
     newTaskOpen, modalTask, chatFocus,
+    editTask, deleteConfirm, deletingId,
     setTab, setSearchText, setFilterPrioridad, setFilterStatus,
     setFilterProyecto, setFilterResponsable,
     openModal, closeModal, setNewTaskOpen, setChatFocus,
+    openEdit, closeEdit, requestDelete, cancelDelete, confirmDelete,
   };
 }

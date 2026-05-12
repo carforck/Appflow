@@ -25,8 +25,8 @@ function SwimLaneHeader({ proyectoId, nombre, count }: { proyectoId: string; nom
 // ── Kanban Admin con Swimlanes ────────────────────────────────────────────────
 
 export function KanbanAdminView({
-  tasks, onCardClick, filterStatus = 'Todas',
-}: { tasks: TaskWithMeta[]; onCardClick: (t: TaskWithMeta) => void; filterStatus?: TareaStatus | 'Todas' }) {
+  tasks, onCardClick, filterStatus = 'Todas', onEdit, onDelete,
+}: { tasks: TaskWithMeta[]; onCardClick: (t: TaskWithMeta) => void; filterStatus?: TareaStatus | 'Todas'; onEdit?: (t: TaskWithMeta) => void; onDelete?: (t: TaskWithMeta) => void }) {
   const proyectos = useMemo(() => {
     const ids = Array.from(new Set(tasks.map((t) => t.id_proyecto)));
     return ids.map((id) => {
@@ -56,7 +56,7 @@ export function KanbanAdminView({
                   <span className="ml-auto text-[10px] text-slate-400 shrink-0">{cards.length}</span>
                 </div>
                 <div className="p-2.5 space-y-2 bg-white/60 dark:bg-slate-900/30">
-                  {cards.map((t) => <KanbanCard key={t.id} t={t} onClick={() => onCardClick(t)} />)}
+                  {cards.map((t) => <KanbanCard key={t.id} t={t} isAdmin onClick={() => onCardClick(t)} onEdit={onEdit} onDelete={onDelete} />)}
                 </div>
               </div>
             );
@@ -84,7 +84,7 @@ export function KanbanAdminView({
                         <span className="text-[10px] text-slate-300 dark:text-slate-700">—</span>
                       </div>
                     ) : (
-                      cards.map((t) => <KanbanCard key={t.id} t={t} onClick={() => onCardClick(t)} />)
+                      cards.map((t) => <KanbanCard key={t.id} t={t} isAdmin onClick={() => onCardClick(t)} onEdit={onEdit} onDelete={onDelete} />)
                     )}
                   </div>
                 );

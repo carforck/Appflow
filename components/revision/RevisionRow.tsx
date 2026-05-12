@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { RevisionTask, RevisionChanges } from '@/hooks/useRevision';
 import type { MockUser }    from '@/lib/mockData';
 import type { MockProject } from '@/lib/mockData';
@@ -35,6 +35,13 @@ export default function RevisionRow({
   onApprove, onReject, onUpdate,
 }: Props) {
   const [desc,           setDesc]           = useState(task.tarea_descripcion);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
   const [showUsers,      setShowUsers]      = useState(false);
   const [userSearch,     setUserSearch]     = useState('');
   const [saving,         setSaving]         = useState(false);
@@ -54,6 +61,8 @@ export default function RevisionRow({
   const [showProjectsNombre, setShowProjectsNombre] = useState(false);
   const [projectSearchNombre,setProjectSearchNombre]= useState('');
   const [editProjectNombre,  setEditProjectNombre]  = useState(false);
+
+  useEffect(() => { autoResize(); }, [desc, autoResize]);
 
   // Sync local state when the server refreshes task data
   useEffect(() => { setDesc(task.tarea_descripcion); },           [task.tarea_descripcion]);
@@ -243,12 +252,14 @@ export default function RevisionRow({
           </span>
         )}
         <textarea
+          ref={textareaRef}
           value={desc}
-          onChange={(e) => setDesc(e.target.value)}
+          onChange={(e) => { setDesc(e.target.value); autoResize(); }}
           onBlur={saveDesc}
           rows={2}
           aria-label="Descripción de la tarea"
-          className="w-full text-[10px] text-slate-800 dark:text-slate-100 bg-transparent border-0 outline-none resize-none focus:ring-1 focus:ring-alzak-blue/30 rounded px-1 -mx-1 py-0 min-w-[160px]"
+          className="w-full text-[10px] text-slate-800 dark:text-slate-100 bg-transparent border-0 outline-none resize-none focus:ring-1 focus:ring-alzak-blue/30 rounded px-1 -mx-1 py-0 min-w-[160px] overflow-y-auto kanban-scroll"
+          style={{ minHeight: '2.5rem', maxHeight: '7.5rem' }}
         />
         {saving && <span className="text-[9px] text-slate-400 animate-pulse">guardando...</span>}
       </td>

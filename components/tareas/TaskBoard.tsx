@@ -5,6 +5,7 @@ import NewTaskModal from '@/components/NewTaskModal';
 import { KanbanAdminView, KanbanUserView } from './KanbanViews';
 import { HistorialView }    from './HistorialView';
 import { ListaMaestraView } from './ListaMaestraView';
+import { EditTaskModal }    from './EditTaskModal';
 import { PRIORIDAD_DOT, STATUS_CFG, ALL_STATUSES } from './taskBoardConfig';
 import type { TaskBoardState } from '@/hooks/useTaskBoard';
 import type { TareaPrioridad, TareaStatus } from '@/lib/mockData';
@@ -15,9 +16,11 @@ export function TaskBoard(props: TaskBoardState) {
     proyectoOptions, responsableOptions,
     tab, searchText, filterPrioridad, filterStatus, filterProyecto, filterResponsable,
     newTaskOpen, modalTask, chatFocus,
+    editTask, deleteConfirm, deletingId,
     setTab, setSearchText, setFilterPrioridad, setFilterStatus,
     setFilterProyecto, setFilterResponsable,
     openModal, closeModal, setNewTaskOpen,
+    openEdit, closeEdit, requestDelete, cancelDelete, confirmDelete,
   } = props;
 
   return (
@@ -221,7 +224,7 @@ export function TaskBoard(props: TaskBoardState) {
                 )}
               </div>
             ) : isAdmin ? (
-              <KanbanAdminView tasks={filtered} onCardClick={openModal} filterStatus={filterStatus} />
+              <KanbanAdminView tasks={filtered} onCardClick={openModal} filterStatus={filterStatus} onEdit={openEdit} onDelete={requestDelete} />
             ) : (
               <KanbanUserView tasks={filtered} onCardClick={openModal} filterStatus={filterStatus} />
             )
@@ -250,6 +253,34 @@ export function TaskBoard(props: TaskBoardState) {
 
       {modalTask && <TaskModal task={modalTask} onClose={closeModal} focusChat={chatFocus} />}
       {newTaskOpen && <NewTaskModal onClose={() => setNewTaskOpen(false)} />}
+      {editTask && <EditTaskModal task={editTask} onClose={closeEdit} />}
+
+      {/* Confirmación inline de borrado */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
+          <div className="bg-white dark:bg-slate-900 rounded-[20px] shadow-2xl p-6 w-full max-w-sm">
+            <p className="text-sm font-bold text-slate-800 dark:text-white mb-1">¿Eliminar esta tarea?</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-5 line-clamp-2">
+              #{deleteConfirm.id} — {deleteConfirm.tarea_descripcion}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={cancelDelete}
+                className="px-4 py-2 text-sm font-semibold rounded-xl text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deletingId !== null}
+                className="px-4 py-2 text-sm font-bold rounded-xl bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 transition-colors focus-visible:ring-2 focus-visible:ring-red-500/50"
+              >
+                {deletingId !== null ? 'Eliminando…' : 'Sí, eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

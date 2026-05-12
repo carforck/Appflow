@@ -11,6 +11,7 @@ import type { MockTarea, TareaStatus, TareaPrioridad } from '@/lib/mockData';
 export interface RevisionTask {
   id: number;
   id_proyecto: string;
+  id_meeting: number | null;
   nombre_proyecto: string;
   empresa?: string;
   financiador?: string;

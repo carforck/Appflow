@@ -237,6 +237,11 @@ export default function RevisionRow({
 
       {/* Tarea — editable */}
       <td className="px-2 py-1.5">
+        {task.id_meeting === null && (
+          <span className="inline-flex items-center gap-0.5 mb-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-alzak-blue/10 dark:bg-alzak-gold/15 text-alzak-blue dark:text-alzak-gold border border-alzak-blue/20 dark:border-alzak-gold/20">
+            ✏️ Manual
+          </span>
+        )}
         <textarea
           value={desc}
           onChange={(e) => setDesc(e.target.value)}

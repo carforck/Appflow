@@ -176,7 +176,7 @@ async function crearTarea(req, res) {
 async function getTareasRevision(req, res) {
   try {
     const [rows] = await pool.query(`
-      SELECT t.id, t.id_proyecto,
+      SELECT t.id, t.id_proyecto, t.id_meeting,
         COALESCE(p.nombre_proyecto, t.id_proyecto) AS nombre_proyecto,
         p.empresa, p.financiador, t.tarea_descripcion,
         t.responsable_nombre, t.responsable_correo, t.prioridad,

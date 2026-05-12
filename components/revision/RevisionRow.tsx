@@ -189,10 +189,10 @@ export default function RevisionRow({
 
       {/* Nombre Proyecto — combobox búsqueda por nombre o ID */}
       <td className="px-2 py-1.5">
-        <div className="relative min-w-[120px]">
+        <div className="relative min-w-[160px] max-w-[320px]">
           {proyNombre && !editProjectNombre ? (
-            <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
-              <span className="text-[10px] font-medium text-slate-700 dark:text-slate-200 truncate flex-1">{proyNombre}</span>
+            <div className="flex items-start gap-0.5 px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+              <span className="text-[10px] font-medium text-slate-700 dark:text-slate-200 break-words leading-snug flex-1">{proyNombre}</span>
               <button
                 type="button"
                 aria-label="Cambiar proyecto por nombre"

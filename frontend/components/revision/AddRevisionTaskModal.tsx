@@ -65,11 +65,13 @@ export function AddRevisionTaskModal({ users, projects, projectMap, onAdd, onClo
   const [userSearch,      setUserSearch]      = useState('');
   const [editResponsable, setEditResponsable] = useState(true);
 
-  const filteredProjects = projects.filter((p) =>
-    !projectSearch ||
-    p.id_proyecto.toLowerCase().includes(projectSearch.toLowerCase()) ||
-    p.nombre_proyecto.toLowerCase().includes(projectSearch.toLowerCase())
-  ).slice(0, 8);
+  const filteredProjects = projects
+    .filter((p) => p.estado === 'Activo')
+    .filter((p) =>
+      !projectSearch ||
+      p.id_proyecto.toLowerCase().includes(projectSearch.toLowerCase()) ||
+      p.nombre_proyecto.toLowerCase().includes(projectSearch.toLowerCase())
+    );
 
   const filteredUsers = users.filter((u) =>
     u.activo && (
@@ -187,7 +189,7 @@ export function AddRevisionTaskModal({ users, projects, projectMap, onAdd, onClo
               />
             )}
             {showProjects && filteredProjects.length > 0 && (
-              <div className="absolute z-20 left-0 top-full mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden">
+              <div className="absolute z-20 left-0 top-full mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl max-h-52 overflow-y-auto kanban-scroll">
                 {filteredProjects.map((p) => (
                   <button
                     key={p.id_proyecto}
@@ -242,7 +244,7 @@ export function AddRevisionTaskModal({ users, projects, projectMap, onAdd, onClo
               />
             )}
             {showUsers && filteredUsers.length > 0 && (
-              <div className="absolute z-20 left-0 top-full mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden">
+              <div className="absolute z-20 left-0 top-full mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl max-h-52 overflow-y-auto kanban-scroll">
                 {filteredUsers.map((u) => (
                   <button
                     key={u.correo}

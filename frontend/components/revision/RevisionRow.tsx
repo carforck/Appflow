@@ -5,7 +5,7 @@ import type { RevisionTask, RevisionChanges } from '@/hooks/useRevision';
 import type { MockUser }    from '@/lib/mockData';
 import type { MockProject } from '@/lib/mockData';
 
-export type ProjectInfo = Pick<MockProject, 'id_proyecto' | 'nombre_proyecto'> & {
+export type ProjectInfo = Pick<MockProject, 'id_proyecto' | 'nombre_proyecto' | 'estado'> & {
   empresa?: string | null;
   financiador?: string | null;
 };
@@ -68,17 +68,19 @@ export default function RevisionRow({
   const isProjectInvalid    = isInvalid && !proyId;
   const isResponsableInvalid = isInvalid && !task.responsable_correo;
 
-  const filteredProjectsById = projects.filter((p) =>
+  const activeProjects = projects.filter((p) => p.estado === 'Activo');
+
+  const filteredProjectsById = activeProjects.filter((p) =>
     !projectSearchId ||
     p.id_proyecto.toLowerCase().includes(projectSearchId.toLowerCase()) ||
     p.nombre_proyecto.toLowerCase().includes(projectSearchId.toLowerCase())
-  ).slice(0, 8);
+  );
 
-  const filteredProjectsByNombre = projects.filter((p) =>
+  const filteredProjectsByNombre = activeProjects.filter((p) =>
     !projectSearchNombre ||
     p.nombre_proyecto.toLowerCase().includes(projectSearchNombre.toLowerCase()) ||
     p.id_proyecto.toLowerCase().includes(projectSearchNombre.toLowerCase())
-  ).slice(0, 8);
+  );
 
   const selectProject = (id: string) => {
     const info = projectMap[id];
@@ -159,7 +161,7 @@ export default function RevisionRow({
             />
           )}
           {showProjectsId && filteredProjectsById.length > 0 && (
-            <div className="absolute z-30 left-0 top-full mt-1 w-64 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden">
+            <div className="absolute z-30 left-0 top-full mt-1 w-64 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl max-h-52 overflow-y-auto kanban-scroll">
               {filteredProjectsById.map((p) => (
                 <button
                   key={p.id_proyecto}
@@ -202,7 +204,7 @@ export default function RevisionRow({
             />
           )}
           {showProjectsNombre && filteredProjectsByNombre.length > 0 && (
-            <div className="absolute z-30 left-0 top-full mt-1 w-64 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden">
+            <div className="absolute z-30 left-0 top-full mt-1 w-64 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl max-h-52 overflow-y-auto kanban-scroll">
               {filteredProjectsByNombre.map((p) => (
                 <button
                   key={p.id_proyecto}

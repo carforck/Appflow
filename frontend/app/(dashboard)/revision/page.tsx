@@ -53,6 +53,7 @@ export default function RevisionPage() {
     projectMap[p.id_proyecto] = {
       id_proyecto:     p.id_proyecto,
       nombre_proyecto: p.nombre_proyecto,
+      estado:          p.estado,
       empresa:         (p as { empresa?: string }).empresa,
       financiador:     (p as { financiador?: string }).financiador,
     };

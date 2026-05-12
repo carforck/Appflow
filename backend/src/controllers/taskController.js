@@ -5,7 +5,7 @@
  * destinatarios específicos después de insertar en db_notifications.
  */
 const pool                  = require('../config/db');
-const { queueApprovedTask, sendConsolidatedEmails } = require('../services/emailService');
+const { queueApprovedTask, sendConsolidatedEmails, sendTaskUpdateEmail } = require('../services/emailService');
 const { emitNotifAlert, emitTaskUpdated, emitTaskCreated } = require('../config/socket');
 const { logActivity }       = require('../utils/logActivity');
 
@@ -286,13 +286,15 @@ async function aprobarRevision(req, res) {
 async function rechazarRevision(req, res) {
   try {
     const { id } = req.params;
-    await pool.query(`DELETE FROM tasks WHERE id = ? AND estado_tarea = 'Pendiente Revisión'`, [id]);
-    console.log(`🗑️ Tarea #${id} rechazada y eliminada`);
-    emitTaskCreated(); // Fuerza refresh de la lista de revisión en todos los clientes
+    const [rows] = await pool.query('SELECT estado_tarea FROM tasks WHERE id = ?', [id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Tarea no encontrada' });
+    await pool.query('DELETE FROM tasks WHERE id = ?', [id]);
+    console.log(`🗑️ Tarea #${id} eliminada (estado previo: ${rows[0].estado_tarea})`);
+    emitTaskCreated();
     res.json({ status: 'deleted' });
   } catch (err) {
     console.error('❌ DELETE /tareas/:id:', err.message);
-    res.status(500).json({ error: 'Error al rechazar tarea', detalle: err.message });
+    res.status(500).json({ error: 'Error al eliminar tarea', detalle: err.message });
   }
 }
 
@@ -421,10 +423,16 @@ async function updateTask(req, res) {
       id_proyecto, tarea_descripcion, estado_tarea,
     } = req.body;
 
-    // fecha_finalizacion sigue la lógica del estado cuando se cambia
+    // Leer estado previo para calcular diff y obtener correo del responsable
+    const [[prev]] = await pool.query(
+      'SELECT tarea_descripcion, prioridad, responsable_nombre, responsable_correo, fecha_inicio, fecha_entrega, id_proyecto, estado_tarea FROM tasks WHERE id = ?',
+      [id]
+    );
+    if (!prev) return res.status(404).json({ error: 'Tarea no encontrada' });
+
     let fechaFinSQL = '';
-    if (estado_tarea === 'Completada')          fechaFinSQL = ', fecha_finalizacion = NOW()';
-    else if (estado_tarea != null)              fechaFinSQL = ', fecha_finalizacion = NULL';
+    if (estado_tarea === 'Completada')  fechaFinSQL = ', fecha_finalizacion = NOW()';
+    else if (estado_tarea != null)      fechaFinSQL = ', fecha_finalizacion = NULL';
 
     const [result] = await pool.query(
       `UPDATE tasks SET
@@ -450,14 +458,35 @@ async function updateTask(req, res) {
 
     emitTaskUpdated({
       id: Number(id),
-      ...(prioridad          ? { prioridad }                    : {}),
-      ...(fecha_entrega      ? { fecha_entrega }                : {}),
-      ...(responsable_nombre ? { responsable_nombre }           : {}),
-      ...(responsable_correo ? { responsable_correo }           : {}),
-      ...(id_proyecto        ? { id_proyecto }                  : {}),
-      ...(tarea_descripcion  ? { tarea_descripcion }            : {}),
-      ...(estado_tarea       ? { status: estado_tarea }         : {}),
+      ...(prioridad          ? { prioridad }           : {}),
+      ...(fecha_entrega      ? { fecha_entrega }       : {}),
+      ...(responsable_nombre ? { responsable_nombre }  : {}),
+      ...(responsable_correo ? { responsable_correo }  : {}),
+      ...(id_proyecto        ? { id_proyecto }         : {}),
+      ...(tarea_descripcion  ? { tarea_descripcion }   : {}),
+      ...(estado_tarea       ? { status: estado_tarea }: {}),
     });
+
+    // Calcular diff y notificar al responsable
+    const DIFF_FIELDS = ['tarea_descripcion', 'prioridad', 'responsable_nombre', 'fecha_inicio', 'fecha_entrega', 'id_proyecto'];
+    const incoming    = { tarea_descripcion, prioridad, responsable_nombre, fecha_inicio, fecha_entrega, id_proyecto };
+    const changes     = {};
+    for (const field of DIFF_FIELDS) {
+      const nuevo = incoming[field];
+      if (nuevo != null && String(nuevo) !== String(prev[field] ?? '')) {
+        changes[field] = { antes: prev[field], despues: nuevo };
+      }
+    }
+    const destCorreo = responsable_correo ?? prev.responsable_correo;
+    if (Object.keys(changes).length > 0 && destCorreo) {
+      sendTaskUpdateEmail({
+        correo:       destCorreo,
+        nombre:       responsable_nombre ?? prev.responsable_nombre,
+        taskId:       id,
+        changes,
+        adminNombre:  req.user?.nombre ?? req.user?.email,
+      }).catch((e) => console.error('❌ Email edición tarea:', e.message));
+    }
 
     console.log(`✅ PATCH /tareas/${id} → campos actualizados`);
     res.json({ status: 'updated', id: Number(id) });

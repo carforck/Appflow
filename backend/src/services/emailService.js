@@ -316,4 +316,102 @@ async function sendPasswordResetEmail({ email, nombre, code }) {
   console.log(`✅ OTP enviado a ${email}`);
 }
 
-module.exports = { queueApprovedTask, sendConsolidatedEmails, sendPasswordResetEmail };
+// ── sendTaskUpdateEmail ────────────────────────────────────────────────────────
+const FIELD_LABELS = {
+  tarea_descripcion:  'Descripción',
+  prioridad:          'Prioridad',
+  responsable_nombre: 'Responsable',
+  fecha_inicio:       'Fecha inicio',
+  fecha_entrega:      'Fecha entrega',
+  id_proyecto:        'Proyecto',
+};
+
+async function sendTaskUpdateEmail({ correo, nombre, taskId, changes, adminNombre }) {
+  if (!correo) return;
+  const transport = buildTransport();
+  const from      = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@alzakfoundation.org';
+
+  const rows = Object.entries(changes)
+    .filter(([key]) => FIELD_LABELS[key])
+    .map(([key, { antes, despues }]) => `
+      <tr>
+        <td style="padding:10px 16px;font-size:13px;color:#475569;border-bottom:1px solid #f1f5f9;font-weight:600;white-space:nowrap;">
+          ${FIELD_LABELS[key]}
+        </td>
+        <td style="padding:10px 16px;font-size:13px;color:#94a3b8;border-bottom:1px solid #f1f5f9;">
+          <span style="text-decoration:line-through;">${antes ?? '—'}</span>
+        </td>
+        <td style="padding:10px 16px;font-size:13px;color:#1a365d;border-bottom:1px solid #f1f5f9;font-weight:700;">
+          ${despues ?? '—'}
+        </td>
+      </tr>`).join('');
+
+  if (!rows) return; // nada cambiable que mostrar
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;background:#f1f5f9;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
+    <tr><td align="center">
+      <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08);">
+        <tr>
+          <td style="background:#1a365d;padding:28px 32px;">
+            <h1 style="margin:0;font-size:22px;color:#fff;font-weight:700;">Alzak Flow</h1>
+            <p style="margin:6px 0 0;font-size:14px;color:#93c5fd;">Una de tus tareas fue modificada</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 32px 8px;">
+            <p style="margin:0 0 6px;font-size:15px;color:#334155;">
+              Hola <strong>${nombre || correo}</strong>,
+            </p>
+            <p style="margin:0 0 20px;font-size:14px;color:#64748b;">
+              El administrador <strong>${adminNombre || 'del sistema'}</strong> realizó cambios en la tarea <strong>#${taskId}</strong>:
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="padding:10px 16px;font-size:11px;color:#94a3b8;text-align:left;font-weight:700;text-transform:uppercase;letter-spacing:.05em;">Campo</th>
+                  <th style="padding:10px 16px;font-size:11px;color:#94a3b8;text-align:left;font-weight:700;text-transform:uppercase;letter-spacing:.05em;">Antes</th>
+                  <th style="padding:10px 16px;font-size:11px;color:#94a3b8;text-align:left;font-weight:700;text-transform:uppercase;letter-spacing:.05em;">Ahora</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 32px 28px;">
+            <p style="margin:0;font-size:13px;color:#94a3b8;">
+              Ingresa a <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://appflow2026.vercel.app'}/tareas" style="color:#1a365d;font-weight:600;">Alzak Flow</a> para ver tu tarea actualizada.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f8fafc;padding:16px 32px;border-top:1px solid #e2e8f0;">
+            <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;">
+              Alzak Foundation · Sistema de Gestión de Proyectos Clínicos
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  if (!transport) {
+    console.log(`📧 [DRY-RUN] Notificación de edición tarea #${taskId} → ${correo}`);
+    return;
+  }
+  await transport.sendMail({
+    from,
+    to:      correo,
+    subject: `Alzak Flow — Tu tarea #${taskId} fue modificada`,
+    html,
+  });
+  console.log(`✅ Notificación edición tarea #${taskId} enviada a ${correo}`);
+}
+
+module.exports = { queueApprovedTask, sendConsolidatedEmails, sendPasswordResetEmail, sendTaskUpdateEmail };

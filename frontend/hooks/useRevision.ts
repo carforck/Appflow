@@ -22,6 +22,7 @@ export function useRevision() {
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [rejectingId, setRejectingId] = useState<number | null>(null);
   const approveAllRunning = useRef(false);
+  const rejectAllRunning  = useRef(false);
 
   const approve = useCallback(async (task: RevisionTask): Promise<void> => {
     setApprovingId(task.id);
@@ -84,6 +85,53 @@ export function useRevision() {
     }
   }, [revisionTasks, refreshRevision, addToast]);
 
+  const rejectAll = useCallback(async (): Promise<void> => {
+    if (rejectAllRunning.current) return;
+    rejectAllRunning.current = true;
+    const snapshot = [...revisionTasks];
+    let count = 0;
+    try {
+      for (const t of snapshot) {
+        try {
+          const res = await authFetch(`/tareas/${t.id}`, { method: 'DELETE' });
+          if (res.ok) count++;
+        } catch { /* continúa */ }
+      }
+      await refreshRevision();
+      addToast(`${count} tarea${count !== 1 ? 's' : ''} eliminada${count !== 1 ? 's' : ''} de la matriz`, 'info');
+    } finally {
+      rejectAllRunning.current = false;
+    }
+  }, [revisionTasks, refreshRevision, addToast]);
+
+  const addManualTask = useCallback(async (data: {
+    id_proyecto?:       string;
+    tarea_descripcion:  string;
+    responsable_nombre?: string;
+    responsable_correo?: string;
+    prioridad?:          TareaPrioridad;
+    fecha_inicio?:       string;
+    fecha_entrega?:      string;
+  }): Promise<boolean> => {
+    try {
+      const res = await authFetch('/tareas/revision', {
+        method: 'POST',
+        body:   JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        addToast(d.error ?? 'Error al crear tarea', 'error');
+        return false;
+      }
+      await refreshRevision();
+      addToast('✅ Tarea agregada a la matriz de revisión', 'success');
+      return true;
+    } catch {
+      addToast('Error de conexión', 'error');
+      return false;
+    }
+  }, [refreshRevision, addToast]);
+
   return {
     tasks:       revisionTasks,
     count:       revisionCount,
@@ -93,6 +141,8 @@ export function useRevision() {
     update,
     reject,
     approveAll,
+    rejectAll,
+    addManualTask,
     refresh:     refreshRevision,
   };
 }

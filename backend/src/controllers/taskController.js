@@ -296,6 +296,50 @@ async function rechazarRevision(req, res) {
   }
 }
 
+async function crearTareaRevision(req, res) {
+  const {
+    id_proyecto,
+    tarea_descripcion,
+    responsable_nombre,
+    responsable_correo,
+    prioridad    = 'Media',
+    fecha_inicio,
+    fecha_entrega,
+  } = req.body;
+
+  if (!tarea_descripcion?.trim()) {
+    return res.status(400).json({ error: 'La descripción de la tarea es requerida' });
+  }
+
+  const VALID_PRIO = ['Alta', 'Media', 'Baja'];
+  const prioFinal  = VALID_PRIO.includes(prioridad) ? prioridad : 'Media';
+  const fechaFinal = fecha_entrega || new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO tasks
+         (id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo,
+          prioridad, estado_tarea, fecha_inicio, fecha_entrega)
+       VALUES (?, ?, ?, ?, ?, 'Pendiente Revisión', ?, ?)`,
+      [
+        id_proyecto || '1111',
+        tarea_descripcion.trim(),
+        responsable_nombre || null,
+        responsable_correo || null,
+        prioFinal,
+        fecha_inicio  || null,
+        fechaFinal,
+      ]
+    );
+    emitTaskCreated();
+    console.log(`📝 Tarea manual en revisión: #${result.insertId} por ${req.user.email}`);
+    res.status(201).json({ status: 'created', id: result.insertId });
+  } catch (err) {
+    console.error('❌ POST /tareas/revision:', err.message);
+    res.status(500).json({ error: 'Error al crear tarea', detalle: err.message });
+  }
+}
+
 const DEFAULT_PROJECT_ID = '1111';
 
 async function commitStaging(req, res) {
@@ -470,6 +514,6 @@ async function updateTaskStatus(req, res) {
 
 module.exports = {
   getTareas, crearTarea, commitStaging,
-  getTareasRevision, actualizarRevision, aprobarRevision, rechazarRevision,
+  getTareasRevision, crearTareaRevision, actualizarRevision, aprobarRevision, rechazarRevision,
   updateTask, updateTaskStatus,
 };

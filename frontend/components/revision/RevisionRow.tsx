@@ -42,10 +42,13 @@ export default function RevisionRow({
   const [fechaInicio, setFechaInicio] = useState(task.fecha_inicio ?? '');
   const [fechaFin,    setFechaFin]    = useState(task.fecha_entrega ?? '');
 
-  const [proyId,      setProyId]      = useState(task.id_proyecto);
-  const [proyNombre,  setProyNombre]  = useState(task.nombre_proyecto);
-  const [empresa,     setEmpresa]     = useState(task.empresa ?? '');
-  const [financiador, setFinanciador] = useState(task.financiador ?? '');
+  const [proyId,        setProyId]        = useState(task.id_proyecto);
+  const [proyNombre,    setProyNombre]    = useState(task.nombre_proyecto);
+  const [empresa,       setEmpresa]       = useState(task.empresa ?? '');
+  const [financiador,   setFinanciador]   = useState(task.financiador ?? '');
+  const [showProjects,  setShowProjects]  = useState(false);
+  const [projectSearch, setProjectSearch] = useState('');
+  const [editProject,   setEditProject]   = useState(false);
 
   // Sync local state when the server refreshes task data
   useEffect(() => { setDesc(task.tarea_descripcion); },           [task.tarea_descripcion]);
@@ -59,6 +62,33 @@ export default function RevisionRow({
   // Granularidad: qué campo específico está vacío
   const isProjectInvalid    = isInvalid && !proyId;
   const isResponsableInvalid = isInvalid && !task.responsable_correo;
+
+  const filteredProjects = projects.filter((p) =>
+    !projectSearch ||
+    p.id_proyecto.toLowerCase().includes(projectSearch.toLowerCase()) ||
+    p.nombre_proyecto.toLowerCase().includes(projectSearch.toLowerCase())
+  ).slice(0, 8);
+
+  const selectProject = (id: string) => {
+    const info = projectMap[id];
+    setProyId(id);
+    setProyNombre(info?.nombre_proyecto ?? id);
+    setEmpresa(info?.empresa ?? '');
+    setFinanciador(info?.financiador ?? '');
+    setEditProject(false);
+    setShowProjects(false);
+    setProjectSearch('');
+    onUpdate({ id_proyecto: id });
+  };
+
+  const clearProject = () => {
+    setProyId('');
+    setProyNombre('');
+    setEmpresa('');
+    setFinanciador('');
+    setEditProject(true);
+    setProjectSearch('');
+  };
 
   const filteredUsers = users
     .filter((u) => u.activo && (
@@ -75,15 +105,6 @@ export default function RevisionRow({
     setSaving(false);
   };
 
-  const handleProjectChange = async (newId: string) => {
-    const info = projectMap[newId];
-    setProyId(newId);
-    setProyNombre(info?.nombre_proyecto ?? newId);
-    setEmpresa(info?.empresa ?? '');
-    setFinanciador(info?.financiador ?? '');
-    await onUpdate({ id_proyecto: newId });
-  };
-
   return (
     <tr
       data-row-id={task.id}
@@ -93,25 +114,55 @@ export default function RevisionRow({
           : 'border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors align-top'
       }
     >
-      {/* ID Proyecto — dropdown con cascada */}
+      {/* ID Proyecto — combobox con búsqueda por ID o nombre */}
       <td className="px-2 py-1.5 whitespace-nowrap">
-        <select
-          value={proyId}
-          onChange={(e) => handleProjectChange(e.target.value)}
-          aria-label="Seleccionar proyecto"
-          className={`text-[10px] font-mono font-bold rounded-md px-1.5 py-0.5 border focus:outline-none focus:ring-1 w-[96px] ${
-            isProjectInvalid
-              ? 'border-red-500 ring-1 ring-red-400 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-              : proyId
-                ? 'border-slate-200 dark:border-slate-700 bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold focus:ring-alzak-blue/40'
-                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-500 focus:ring-alzak-blue/40'
-          }`}
-        >
-          <option value="">— Proyecto —</option>
-          {projects.map((p) => (
-            <option key={p.id_proyecto} value={p.id_proyecto}>{p.id_proyecto}</option>
-          ))}
-        </select>
+        <div className="relative w-[96px]">
+          {proyId && !editProject ? (
+            <div className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-md border ${
+              isProjectInvalid
+                ? 'border-red-500 bg-red-50 dark:bg-red-900/30'
+                : 'border-slate-200 dark:border-slate-700 bg-alzak-blue/10 dark:bg-alzak-gold/10'
+            }`}>
+              <span className="text-[10px] font-mono font-bold text-alzak-blue dark:text-alzak-gold truncate flex-1">{proyId}</span>
+              <button
+                type="button"
+                aria-label="Cambiar proyecto"
+                onClick={clearProject}
+                className="shrink-0 text-slate-400 hover:text-red-500 font-bold text-sm leading-none w-3.5 h-3.5 flex items-center justify-center"
+              >×</button>
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={projectSearch}
+              onChange={(e) => { setProjectSearch(e.target.value); setShowProjects(true); }}
+              onFocus={() => setShowProjects(true)}
+              onBlur={() => setTimeout(() => setShowProjects(false), 150)}
+              placeholder="ID / Nombre..."
+              aria-label="Buscar proyecto"
+              className={`w-full text-[10px] px-1.5 py-0.5 rounded-md border bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 ${
+                isProjectInvalid
+                  ? 'border-red-500 ring-1 ring-red-400 focus:ring-red-400'
+                  : 'border-slate-300 dark:border-slate-600 focus:ring-alzak-blue/40'
+              }`}
+            />
+          )}
+          {showProjects && filteredProjects.length > 0 && (
+            <div className="absolute z-30 left-0 top-full mt-1 w-64 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden">
+              {filteredProjects.map((p) => (
+                <button
+                  key={p.id_proyecto}
+                  type="button"
+                  onMouseDown={() => selectProject(p.id_proyecto)}
+                  className="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors"
+                >
+                  <p className="text-[10px] font-mono font-bold text-alzak-blue dark:text-alzak-gold">{p.id_proyecto}</p>
+                  <p className="text-[9px] text-slate-500 truncate">{p.nombre_proyecto}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </td>
 
       {/* Nombre Proyecto — cascada */}

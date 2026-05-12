@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const {
   getTareas, crearTarea, commitStaging,
-  getTareasRevision, actualizarRevision, aprobarRevision, rechazarRevision,
+  getTareasRevision, crearTareaRevision, actualizarRevision, aprobarRevision, rechazarRevision,
   updateTask, updateTaskStatus,
 } = require('../controllers/taskController');
 const { getNotas, addNota, getNotasResumen } = require('../controllers/notesController');
@@ -28,6 +28,7 @@ router.post('/:id/notas',      authMiddleware, addNota);
 
 // Flujo de revisión — solo admin / superadmin
 router.get('/revision',        authMiddleware, requireRole('admin', 'superadmin'), getTareasRevision);
+router.post('/revision',       authMiddleware, requireRole('admin', 'superadmin'), crearTareaRevision);
 router.patch('/:id/revision',  authMiddleware, requireRole('admin', 'superadmin'), actualizarRevision);
 router.patch('/:id/aprobar',   authMiddleware, requireRole('admin', 'superadmin'), aprobarRevision);
 router.delete('/:id',          authMiddleware, requireRole('admin', 'superadmin'), rechazarRevision);

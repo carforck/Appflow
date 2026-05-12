@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { useRevision }     from '@/hooks/useRevision';
-import { useUsuarios }     from '@/hooks/useUsuarios';
-import { useProjectStore } from '@/context/ProjectStoreContext';
-import { useAuth }         from '@/context/AuthContext';
-import { useRouter }       from 'next/navigation';
-import { useToast }        from '@/components/Toast';
-import RevisionRow         from '@/components/revision/RevisionRow';
-import type { ProjectInfo } from '@/components/revision/RevisionRow';
+import { useRevision }       from '@/hooks/useRevision';
+import { useUsuarios }       from '@/hooks/useUsuarios';
+import { useProjectStore }   from '@/context/ProjectStoreContext';
+import { useAuth }           from '@/context/AuthContext';
+import { useRouter }         from 'next/navigation';
+import { useToast }          from '@/components/Toast';
+import RevisionRow           from '@/components/revision/RevisionRow';
+import { ApproveAllModal }   from '@/components/revision/ApproveAllModal';
+import { AddRevisionTaskModal } from '@/components/revision/AddRevisionTaskModal';
+import type { ProjectInfo }  from '@/components/revision/RevisionRow';
 
 const TH = 'px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap';
 
@@ -20,11 +22,15 @@ export default function RevisionPage() {
   const { addToast } = useToast();
   const {
     tasks, count, approvingId, rejectingId,
-    approve, reject, update, approveAll, refresh,
+    approve, reject, update, approveAll, rejectAll, addManualTask, refresh,
   } = useRevision();
 
-  const [invalidIds,  setInvalidIds]  = useState<Set<number>>(new Set());
-  const [scrollToId,  setScrollToId]  = useState<number | null>(null);
+  const [invalidIds,       setInvalidIds]       = useState<Set<number>>(new Set());
+  const [scrollToId,       setScrollToId]       = useState<number | null>(null);
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [approveAllLoading, setApproveAllLoading] = useState(false);
+  const [rejectAllStep,    setRejectAllStep]    = useState<'idle' | 'confirm' | 'loading'>('idle');
+  const [showAddModal,     setShowAddModal]     = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
 
   // Scroll automático a la primera fila con error tras render
@@ -52,20 +58,33 @@ export default function RevisionPage() {
     };
   }
 
-  // Validación infalible: si hay UNA sola fila incompleta, no se envía nada
-  const handleApproveAll = async () => {
+  // Validación infalible: si hay UNA sola fila incompleta, no abre el modal
+  const handleApproveAll = () => {
     const invalid = tasks.filter((t) => !t.id_proyecto || !t.responsable_correo);
     if (invalid.length > 0) {
       setInvalidIds(new Set(invalid.map((t) => t.id)));
-      setScrollToId(invalid[0].id);           // scroll automático a la primera
+      setScrollToId(invalid[0].id);
       addToast(
         `No se pudo procesar: ${invalid.length} fila${invalid.length > 1 ? 's' : ''} incompleta${invalid.length > 1 ? 's' : ''}`,
         'error',
       );
-      return;                                 // cero peticiones al backend
+      return;
     }
     setInvalidIds(new Set());
+    setShowApproveModal(true);
+  };
+
+  const handleConfirmApproveAll = async () => {
+    setApproveAllLoading(true);
     await approveAll();
+    setApproveAllLoading(false);
+    setShowApproveModal(false);
+  };
+
+  const handleRejectAll = async () => {
+    setRejectAllStep('loading');
+    await rejectAll();
+    setRejectAllStep('idle');
   };
 
   // Actualizar: limpia estados de error + re-fetch real desde servidor
@@ -111,7 +130,7 @@ export default function RevisionPage() {
               : `${count} tarea${count !== 1 ? 's' : ''} pendientes — completa Proyecto y Responsable antes de aprobar.`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={handleRefresh}
             aria-label="Recargar y limpiar errores"
@@ -119,6 +138,39 @@ export default function RevisionPage() {
           >
             ↻ Actualizar
           </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-3 py-1.5 rounded-xl text-xs font-semibold text-alzak-blue dark:text-alzak-gold border border-alzak-blue/30 dark:border-alzak-gold/30 hover:bg-alzak-blue/5 dark:hover:bg-alzak-gold/10 transition-colors"
+          >
+            ➕ Agregar tarea
+          </button>
+          {count > 0 && rejectAllStep === 'idle' && (
+            <button
+              onClick={() => setRejectAllStep('confirm')}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold text-red-500 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            >
+              🗑 Eliminar todo ({count})
+            </button>
+          )}
+          {rejectAllStep === 'confirm' && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-400 bg-red-50 dark:bg-red-900/20">
+              <span className="text-xs text-red-600 dark:text-red-300 font-semibold">¿Eliminar {count} tareas?</span>
+              <button
+                onClick={handleRejectAll}
+                className="text-xs font-bold text-white bg-red-500 hover:bg-red-600 px-2 py-0.5 rounded-lg transition-colors"
+              >Sí</button>
+              <button
+                onClick={() => setRejectAllStep('idle')}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-700 px-1"
+              >No</button>
+            </div>
+          )}
+          {rejectAllStep === 'loading' && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20">
+              <span className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs text-red-500">Eliminando...</span>
+            </div>
+          )}
           {count > 0 && (
             <button
               onClick={handleApproveAll}
@@ -222,6 +274,27 @@ export default function RevisionPage() {
             Las minutas de Drive aparecerán aquí automáticamente.
           </p>
         </div>
+      )}
+
+      {/* ── Modal: Confirmación Aprobar Todo ── */}
+      {showApproveModal && (
+        <ApproveAllModal
+          tasks={tasks}
+          loading={approveAllLoading}
+          onConfirm={handleConfirmApproveAll}
+          onCancel={() => setShowApproveModal(false)}
+        />
+      )}
+
+      {/* ── Modal: Agregar tarea manual ── */}
+      {showAddModal && (
+        <AddRevisionTaskModal
+          users={users}
+          projects={projects as unknown as ProjectInfo[]}
+          projectMap={projectMap}
+          onAdd={addManualTask}
+          onClose={() => setShowAddModal(false)}
+        />
       )}
     </div>
   );

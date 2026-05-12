@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-const TOUR_KEY = 'alzak_tour_v1';
+const TOUR_KEY = 'alzak_tour_v2';
 
 const MOCK_CARD_HTML = `
 <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;margin:12px 0 4px;box-shadow:0 2px 12px rgba(0,0,0,.10)">

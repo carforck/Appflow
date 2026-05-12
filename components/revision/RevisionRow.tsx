@@ -42,13 +42,18 @@ export default function RevisionRow({
   const [fechaInicio, setFechaInicio] = useState(task.fecha_inicio ?? '');
   const [fechaFin,    setFechaFin]    = useState(task.fecha_entrega ?? '');
 
-  const [proyId,        setProyId]        = useState(task.id_proyecto);
-  const [proyNombre,    setProyNombre]    = useState(task.nombre_proyecto);
-  const [empresa,       setEmpresa]       = useState(task.empresa ?? '');
-  const [financiador,   setFinanciador]   = useState(task.financiador ?? '');
-  const [showProjects,  setShowProjects]  = useState(false);
-  const [projectSearch, setProjectSearch] = useState('');
-  const [editProject,   setEditProject]   = useState(false);
+  const [proyId,             setProyId]             = useState(task.id_proyecto);
+  const [proyNombre,         setProyNombre]         = useState(task.nombre_proyecto);
+  const [empresa,            setEmpresa]            = useState(task.empresa ?? '');
+  const [financiador,        setFinanciador]        = useState(task.financiador ?? '');
+  // Combobox columna ID
+  const [showProjectsId,     setShowProjectsId]     = useState(false);
+  const [projectSearchId,    setProjectSearchId]    = useState('');
+  const [editProjectId,      setEditProjectId]      = useState(false);
+  // Combobox columna Nombre
+  const [showProjectsNombre, setShowProjectsNombre] = useState(false);
+  const [projectSearchNombre,setProjectSearchNombre]= useState('');
+  const [editProjectNombre,  setEditProjectNombre]  = useState(false);
 
   // Sync local state when the server refreshes task data
   useEffect(() => { setDesc(task.tarea_descripcion); },           [task.tarea_descripcion]);
@@ -63,10 +68,16 @@ export default function RevisionRow({
   const isProjectInvalid    = isInvalid && !proyId;
   const isResponsableInvalid = isInvalid && !task.responsable_correo;
 
-  const filteredProjects = projects.filter((p) =>
-    !projectSearch ||
-    p.id_proyecto.toLowerCase().includes(projectSearch.toLowerCase()) ||
-    p.nombre_proyecto.toLowerCase().includes(projectSearch.toLowerCase())
+  const filteredProjectsById = projects.filter((p) =>
+    !projectSearchId ||
+    p.id_proyecto.toLowerCase().includes(projectSearchId.toLowerCase()) ||
+    p.nombre_proyecto.toLowerCase().includes(projectSearchId.toLowerCase())
+  ).slice(0, 8);
+
+  const filteredProjectsByNombre = projects.filter((p) =>
+    !projectSearchNombre ||
+    p.nombre_proyecto.toLowerCase().includes(projectSearchNombre.toLowerCase()) ||
+    p.id_proyecto.toLowerCase().includes(projectSearchNombre.toLowerCase())
   ).slice(0, 8);
 
   const selectProject = (id: string) => {
@@ -75,9 +86,9 @@ export default function RevisionRow({
     setProyNombre(info?.nombre_proyecto ?? id);
     setEmpresa(info?.empresa ?? '');
     setFinanciador(info?.financiador ?? '');
-    setEditProject(false);
-    setShowProjects(false);
-    setProjectSearch('');
+    // Cierra ambos comboboxes
+    setEditProjectId(false);   setShowProjectsId(false);   setProjectSearchId('');
+    setEditProjectNombre(false);setShowProjectsNombre(false);setProjectSearchNombre('');
     onUpdate({ id_proyecto: id });
   };
 
@@ -86,8 +97,8 @@ export default function RevisionRow({
     setProyNombre('');
     setEmpresa('');
     setFinanciador('');
-    setEditProject(true);
-    setProjectSearch('');
+    setEditProjectId(true);    setProjectSearchId('');
+    setEditProjectNombre(true); setProjectSearchNombre('');
   };
 
   const filteredUsers = users
@@ -114,10 +125,10 @@ export default function RevisionRow({
           : 'border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors align-top'
       }
     >
-      {/* ID Proyecto — combobox con búsqueda por ID o nombre */}
+      {/* ID Proyecto — combobox búsqueda por ID o nombre */}
       <td className="px-2 py-1.5 whitespace-nowrap">
         <div className="relative w-[96px]">
-          {proyId && !editProject ? (
+          {proyId && !editProjectId ? (
             <div className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-md border ${
               isProjectInvalid
                 ? 'border-red-500 bg-red-50 dark:bg-red-900/30'
@@ -134,12 +145,12 @@ export default function RevisionRow({
           ) : (
             <input
               type="text"
-              value={projectSearch}
-              onChange={(e) => { setProjectSearch(e.target.value); setShowProjects(true); }}
-              onFocus={() => setShowProjects(true)}
-              onBlur={() => setTimeout(() => setShowProjects(false), 150)}
+              value={projectSearchId}
+              onChange={(e) => { setProjectSearchId(e.target.value); setShowProjectsId(true); }}
+              onFocus={() => setShowProjectsId(true)}
+              onBlur={() => setTimeout(() => setShowProjectsId(false), 150)}
               placeholder="ID / Nombre..."
-              aria-label="Buscar proyecto"
+              aria-label="Buscar por ID de proyecto"
               className={`w-full text-[10px] px-1.5 py-0.5 rounded-md border bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 ${
                 isProjectInvalid
                   ? 'border-red-500 ring-1 ring-red-400 focus:ring-red-400'
@@ -147,9 +158,9 @@ export default function RevisionRow({
               }`}
             />
           )}
-          {showProjects && filteredProjects.length > 0 && (
+          {showProjectsId && filteredProjectsById.length > 0 && (
             <div className="absolute z-30 left-0 top-full mt-1 w-64 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden">
-              {filteredProjects.map((p) => (
+              {filteredProjectsById.map((p) => (
                 <button
                   key={p.id_proyecto}
                   type="button"
@@ -165,11 +176,47 @@ export default function RevisionRow({
         </div>
       </td>
 
-      {/* Nombre Proyecto — cascada */}
+      {/* Nombre Proyecto — combobox búsqueda por nombre o ID */}
       <td className="px-2 py-1.5">
-        <span className="text-[10px] font-medium text-slate-700 dark:text-slate-200 line-clamp-2 block">
-          {proyNombre || <span className="text-slate-400 italic">—</span>}
-        </span>
+        <div className="relative min-w-[120px]">
+          {proyNombre && !editProjectNombre ? (
+            <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+              <span className="text-[10px] font-medium text-slate-700 dark:text-slate-200 truncate flex-1">{proyNombre}</span>
+              <button
+                type="button"
+                aria-label="Cambiar proyecto por nombre"
+                onClick={clearProject}
+                className="shrink-0 text-slate-400 hover:text-red-500 font-bold text-sm leading-none w-3.5 h-3.5 flex items-center justify-center"
+              >×</button>
+            </div>
+          ) : (
+            <input
+              type="text"
+              value={projectSearchNombre}
+              onChange={(e) => { setProjectSearchNombre(e.target.value); setShowProjectsNombre(true); }}
+              onFocus={() => setShowProjectsNombre(true)}
+              onBlur={() => setTimeout(() => setShowProjectsNombre(false), 150)}
+              placeholder="Nombre..."
+              aria-label="Buscar por nombre de proyecto"
+              className="w-full text-[10px] px-1.5 py-0.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-alzak-blue/40"
+            />
+          )}
+          {showProjectsNombre && filteredProjectsByNombre.length > 0 && (
+            <div className="absolute z-30 left-0 top-full mt-1 w-64 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl overflow-hidden">
+              {filteredProjectsByNombre.map((p) => (
+                <button
+                  key={p.id_proyecto}
+                  type="button"
+                  onMouseDown={() => selectProject(p.id_proyecto)}
+                  className="w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors"
+                >
+                  <p className="text-[9px] text-slate-500 truncate">{p.nombre_proyecto}</p>
+                  <p className="text-[10px] font-mono font-bold text-alzak-blue dark:text-alzak-gold">{p.id_proyecto}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </td>
 
       {/* Empresa — cascada */}

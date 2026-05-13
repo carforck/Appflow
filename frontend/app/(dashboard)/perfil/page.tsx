@@ -71,24 +71,18 @@ export default function PerfilPage() {
       .finally(() => setActivityLoading(false));
   }, []);
 
-  if (!user) return null;
-
-  const initials = user.nombre.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
-
-  // ── Mis tareas ───────────────────────────────────────────────────────────
-  const myTasks       = tasks.filter((t) => t.responsable_correo === user.email);
+  // ── Mis tareas (todos los hooks ANTES del early return) ──────────────────
+  const myTasks       = tasks.filter((t) => t.responsable_correo === user?.email);
   const totalAssigned = myTasks.length;
   const completed     = myTasks.filter((t) => t.status === 'Completada').length;
   const inProgress    = myTasks.filter((t) => t.status === 'En Proceso').length;
   const pending       = myTasks.filter((t) => t.status === 'Pendiente').length;
   const completionRate = totalAssigned > 0 ? Math.round((completed / totalAssigned) * 100) : 0;
 
-  // ── 1. Vencidas ──────────────────────────────────────────────────────────
   const overdue = myTasks
     .filter((t) => t.status !== 'Completada' && daysUntil(t.fecha_entrega) < 0)
     .sort((a, b) => daysUntil(a.fecha_entrega) - daysUntil(b.fecha_entrega));
 
-  // ── 2. Próximas a vencer (7 días) ────────────────────────────────────────
   const upcoming = myTasks
     .filter((t) => {
       const d = daysUntil(t.fecha_entrega);
@@ -96,7 +90,6 @@ export default function PerfilPage() {
     })
     .sort((a, b) => daysUntil(a.fecha_entrega) - daysUntil(b.fecha_entrega));
 
-  // ── 4. Gráfico — completadas por semana (últimas 5) ──────────────────────
   const weeklyData = useMemo(() => {
     const now   = new Date();
     const weeks = Array.from({ length: 5 }, (_, i) => {
@@ -132,6 +125,10 @@ export default function PerfilPage() {
     });
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
   }, [myTasks]);
+
+  if (!user) return null;
+
+  const initials = user.nombre.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
 
   const handleLogout = () => { logout(); router.push('/login'); };
 

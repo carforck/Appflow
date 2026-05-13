@@ -16,7 +16,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Alzak Flow | Gestión de Proyectos",
+  title: "ALZAK Flow | Gestión de Proyectos",
   description: "Sistema de gestión de proyectos — Alzak Foundation",
   icons: {
     icon:        '/logo-alzak.webp',

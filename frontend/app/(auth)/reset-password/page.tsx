@@ -79,7 +79,7 @@ export default function ResetPasswordPage() {
           <Image src="/logo-alzak.webp" alt="Alzak Foundation" width={90} height={45} className="object-contain" />
           <div className="w-px h-9 bg-slate-200 dark:bg-slate-700" />
           <div className="flex flex-col leading-tight">
-            <span className="text-[1.15rem] font-bold text-alzak-blue dark:text-white">Alzak Flow</span>
+            <span className="text-[1.15rem] font-bold text-alzak-blue dark:text-white">ALZAK Flow</span>
             <span className="text-[0.68rem] font-semibold text-alzak-gold uppercase tracking-widest">v1.0 · Foundation</span>
           </div>
         </div>

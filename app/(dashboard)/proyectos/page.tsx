@@ -22,11 +22,11 @@ export default function ProyectosPage() {
   const { projects }  = useProjectStore();
 
   const empresas = useMemo(() =>
-    [...new Set(projects.map((p) => p.empresa).filter(Boolean) as string[])].sort(),
+    Array.from(new Set(projects.map((p) => p.empresa).filter(Boolean) as string[])).sort(),
     [projects],
   );
   const financiadores = useMemo(() =>
-    [...new Set(projects.map((p) => p.financiador).filter(Boolean) as string[])].sort(),
+    Array.from(new Set(projects.map((p) => p.financiador).filter(Boolean) as string[])).sort(),
     [projects],
   );
 

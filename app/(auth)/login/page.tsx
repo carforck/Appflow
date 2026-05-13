@@ -149,7 +149,7 @@ export default function LoginPage() {
             <div className="w-px h-10 bg-slate-200 dark:bg-slate-700 shrink-0" />
             <div className="flex flex-col leading-tight">
               <span className="text-[1.25rem] font-bold text-alzak-blue dark:text-white tracking-tight">
-                Alzak Flow
+                ALZAK Flow
               </span>
               <span className="text-[0.72rem] font-semibold text-alzak-gold uppercase tracking-widest">
                 v1.0 · Foundation

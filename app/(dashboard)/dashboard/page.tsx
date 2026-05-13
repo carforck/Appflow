@@ -51,7 +51,7 @@ export default function DashboardPage() {
             Hola, {user?.nombre?.split(' ')[0]} 👋
           </h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-            {isAdmin ? 'Dashboard de Inteligencia de Negocios · Alzak Flow' : 'Tu resumen personal de actividades'}
+            {isAdmin ? 'Dashboard de Inteligencia de Negocios · ALZAK Flow' : 'Tu resumen personal de actividades'}
             {user?.role !== 'user' && (
               <span className="ml-2 px-2 py-0.5 rounded-full bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold text-[10px] font-bold uppercase">
                 {user?.role}

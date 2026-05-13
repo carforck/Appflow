@@ -251,7 +251,7 @@ export default function Navigation() {
                 className="shrink-0 object-contain rounded-[8px]"
               />
               <div className="min-w-0">
-                <p className="font-bold text-alzak-blue dark:text-white text-sm leading-tight truncate">Alzak Flow</p>
+                <p className="font-bold text-alzak-blue dark:text-white text-sm leading-tight truncate">ALZAK Flow</p>
                 <p className="text-[10px] text-slate-400 leading-tight">v1.0 · Foundation</p>
               </div>
             </Link>
@@ -382,7 +382,7 @@ export default function Navigation() {
             height={26}
             className="object-contain rounded-[6px]"
           />
-          <span className="font-bold text-alzak-blue dark:text-white text-sm">Alzak Flow</span>
+          <span className="font-bold text-alzak-blue dark:text-white text-sm">ALZAK Flow</span>
         </Link>
 
         <div className="flex items-center gap-1">
@@ -438,7 +438,7 @@ export default function Navigation() {
               className="object-contain rounded-[8px]"
             />
             <div>
-              <p className="font-bold text-alzak-blue dark:text-white text-sm leading-tight">Alzak Flow</p>
+              <p className="font-bold text-alzak-blue dark:text-white text-sm leading-tight">ALZAK Flow</p>
               <p className="text-[10px] text-slate-400 leading-tight">v1.0 · Foundation</p>
             </div>
           </Link>

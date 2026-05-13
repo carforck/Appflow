@@ -55,7 +55,7 @@ export function useTour() {
         // ── 1. Bienvenida ──────────────────────────────────────────────
         {
           popover: {
-            title: '👋 Bienvenido a Alzak Flow',
+            title: '👋 Bienvenido a ALZAK Flow',
             description: `
               ${BENEFIT('Este es tu espacio de trabajo para gestionar proyectos, tareas y comunicación con tu equipo — todo en un solo lugar.')}
               ${TIP('El tour dura menos de 1 minuto. Puedes saltarlo en cualquier momento con <b>Esc</b>.')}

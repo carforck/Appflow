@@ -16,7 +16,7 @@ function ToastCard({ item, onDismiss }: { item: NotifToastItem; onDismiss: () =>
 
   const isNota    = item.tipo === 'nota';
   const icon      = isNota ? '💬' : '📋';
-  const categoria = isNota ? 'Alzak Flow · Notas' : 'Alzak Flow · Tareas';
+  const categoria = isNota ? 'ALZAK Flow · Notas' : 'ALZAK Flow · Tareas';
   const destino   = isNota
     ? `/notas?open=${item.id_tarea}`
     : `/tareas?open=${item.id_tarea}&focus=notas`;

@@ -51,7 +51,7 @@ export function formatFecha(dateStr: string) {
 }
 
 export function daysUntil(dateStr: string) {
-  const diff = new Date(dateStr).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0);
+  const diff = new Date(dateStr + 'T12:00:00').setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0);
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 

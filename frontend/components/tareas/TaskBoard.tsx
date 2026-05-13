@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useRef, useEffect } from 'react';
 import TaskModal    from '@/components/TaskModal';
 import NewTaskModal from '@/components/NewTaskModal';
 import { KanbanAdminView, KanbanUserView } from './KanbanViews';
@@ -11,6 +12,20 @@ import type { TaskBoardState } from '@/hooks/useTaskBoard';
 import type { TareaPrioridad, TareaStatus } from '@/lib/mockData';
 
 export function TaskBoard(props: TaskBoardState) {
+  // ── Combobox local: filtro de proyecto ──────────────────────────────────────
+  const [proySearch, setProySearch] = useState('');
+  const [proyOpen,   setProyOpen]   = useState(false);
+  const proyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!proyOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (proyRef.current && !proyRef.current.contains(e.target as Node)) setProyOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [proyOpen]);
+
   const {
     filtered, activeTasks, completedCount, isAdmin,
     proyectoOptions, responsableOptions,
@@ -125,26 +140,71 @@ export function TaskBoard(props: TaskBoardState) {
         {/* Filtros de admin: Proyecto + Responsable */}
         {isAdmin && tab === 'board' && (
           <div className="flex flex-col sm:flex-row gap-2 mt-3">
-            <div className="relative flex-1 min-w-0">
+            {/* Combobox proyecto */}
+            <div ref={proyRef} className="relative flex-1 min-w-0">
               <label htmlFor="filter-proyecto" className="sr-only">Filtrar por proyecto</label>
-              <select
+              <svg className="pointer-events-none absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400 z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <input
                 id="filter-proyecto"
-                value={filterProyecto}
-                onChange={(e) => setFilterProyecto(e.target.value)}
-                className={`w-full pl-8 pr-3 py-2 text-sm rounded-[12px] border appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-alzak-blue/40 dark:focus:ring-alzak-gold/40 transition-all ${
+                type="text"
+                autoComplete="off"
+                placeholder="📁 Buscar proyecto..."
+                value={proySearch}
+                onChange={(e) => {
+                  setProySearch(e.target.value);
+                  setProyOpen(true);
+                  if (!e.target.value) setFilterProyecto('');
+                }}
+                onFocus={() => setProyOpen(true)}
+                className={`w-full pl-8 pr-8 py-2 text-sm rounded-[12px] border focus:outline-none focus:ring-2 focus:ring-alzak-blue/40 dark:focus:ring-alzak-gold/40 transition-all ${
                   filterProyecto
                     ? 'bg-alzak-blue/5 dark:bg-alzak-gold/10 border-alzak-blue/30 dark:border-alzak-gold/30 text-alzak-blue dark:text-alzak-gold font-semibold'
                     : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                 }`}
-              >
-                <option value="">📁 Todos los proyectos</option>
-                {proyectoOptions.map((p) => (
-                  <option key={p.id} value={p.id}>{p.nombre}</option>
-                ))}
-              </select>
-              <svg className="pointer-events-none absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
+              />
+              {(proySearch || filterProyecto) && (
+                <button
+                  aria-label="Limpiar filtro de proyecto"
+                  onClick={() => { setProySearch(''); setFilterProyecto(''); setProyOpen(false); }}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+              {proyOpen && (
+                <div className="absolute z-30 left-0 top-full mt-1 w-full min-w-[280px] max-w-[480px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-56 overflow-y-auto kanban-scroll">
+                  {(() => {
+                    const q = proySearch.toLowerCase();
+                    const matches = proyectoOptions.filter(
+                      (p) => !q || p.nombre.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
+                    );
+                    if (matches.length === 0) return (
+                      <p className="px-3 py-3 text-xs text-slate-400 text-center">Sin resultados</p>
+                    );
+                    return matches.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onMouseDown={() => {
+                          setFilterProyecto(p.id);
+                          setProySearch(p.nombre);
+                          setProyOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors border-b border-slate-100 dark:border-slate-700/40 last:border-0 ${
+                          filterProyecto === p.id ? 'bg-alzak-blue/5 dark:bg-alzak-gold/10' : ''
+                        }`}
+                      >
+                        <span className="font-mono text-[10px] font-bold text-alzak-blue dark:text-alzak-gold mr-2">{p.id}</span>
+                        <span className="text-xs text-slate-700 dark:text-slate-200 leading-snug">{p.nombre}</span>
+                      </button>
+                    ));
+                  })()}
+                </div>
+              )}
             </div>
 
             <div className="relative flex-1 min-w-0">

@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTaskStore } from '@/context/TaskStoreContext';
 import { useRouter } from 'next/navigation';
 import ThemeToggle from '@/components/ThemeToggle';
+import { ForcePasswordChangeModal } from '@/components/ForcePasswordChangeModal';
 import type { UserRole } from '@/lib/mockData';
 
 const ROLE_BADGE: Record<UserRole, string> = {
@@ -22,6 +24,7 @@ export default function PerfilPage() {
   const { user, logout }  = useAuth();
   const { tasks }         = useTaskStore();
   const router            = useRouter();
+  const [showPwdModal, setShowPwdModal] = useState(false);
 
   if (!user) return null;
 
@@ -161,6 +164,17 @@ export default function PerfilPage() {
         </div>
       )}
 
+      {/* Cambiar contraseña */}
+      <button
+        onClick={() => setShowPwdModal(true)}
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-[16px] text-sm font-semibold text-alzak-blue dark:text-alzak-gold border border-alzak-blue/20 dark:border-alzak-gold/20 hover:bg-alzak-blue/5 dark:hover:bg-alzak-gold/10 transition-colors"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+        </svg>
+        <span>Cambiar contraseña</span>
+      </button>
+
       {/* Logout */}
       <button
         onClick={handleLogout}
@@ -171,6 +185,10 @@ export default function PerfilPage() {
         </svg>
         <span>Cerrar sesión</span>
       </button>
+
+      {showPwdModal && (
+        <ForcePasswordChangeModal onClose={() => setShowPwdModal(false)} />
+      )}
     </div>
   );
 }

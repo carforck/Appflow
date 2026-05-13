@@ -54,11 +54,47 @@ export function useUsuariosPage() {
 
   const existingEmails = users.map((u) => u.correo);
 
-  const handleSave = (data: UserForm) => {
-    if (modalUser) {
-      setUsers((prev) => prev.map((u) => (u.correo === data.correo ? (data as MockUser) : u)));
-    } else {
-      setUsers((prev) => [...prev, data as MockUser]);
+  const handleSave = async (data: UserForm) => {
+    try {
+      if (modalUser) {
+        // Editar usuario existente
+        const res = await authFetch(`/users/${encodeURIComponent(data.correo)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            nombre_completo: data.nombre_completo,
+            role:            data.role,
+            activo:          data.activo,
+          }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          addToast(d.error ?? 'Error al actualizar usuario', 'error');
+          return;
+        }
+        setUsers((prev) => prev.map((u) => (u.correo === data.correo ? (data as MockUser) : u)));
+        addToast('Usuario actualizado correctamente', 'success');
+      } else {
+        // Crear usuario nuevo
+        const res = await authFetch('/users', {
+          method: 'POST',
+          body: JSON.stringify({
+            nombre_completo: data.nombre_completo,
+            correo:          data.correo,
+            role:            data.role,
+            activo:          data.activo,
+          }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          addToast(d.error ?? 'Error al crear usuario', 'error');
+          return;
+        }
+        setUsers((prev) => [...prev, data as MockUser]);
+        addToast(`Usuario creado. Contraseña temporal: Alzak2026*`, 'success');
+      }
+    } catch {
+      addToast('Error de conexión', 'error');
+      return;
     }
     setModalUser(undefined);
   };

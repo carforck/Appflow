@@ -15,6 +15,7 @@ import Navigation from '@/components/Navigation';
 import { useNotifToast } from '@/hooks/useNotifToast';
 import { NotifToastContainer } from '@/components/ui/NotifToast';
 import { useTour } from '@/hooks/useTour';
+import { ForcePasswordChangeModal } from '@/components/ForcePasswordChangeModal';
 
 function NotifToastLayer() {
   const { toasts, dismiss } = useNotifToast();
@@ -23,11 +24,15 @@ function NotifToastLayer() {
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { collapsed } = useSidebar();
+  const { user } = useAuth();
   useTour();
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
       <Navigation />
       <NotifToastLayer />
+      {user?.mustChangePassword && (
+        <ForcePasswordChangeModal forced />
+      )}
       <main
         className={`transition-all duration-300 pt-14 lg:pt-0 pb-28 lg:pb-10 min-h-screen ${
           collapsed ? 'lg:ml-[68px]' : 'lg:ml-64'

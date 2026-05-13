@@ -7,18 +7,20 @@ import { backendBase } from '@/lib/api';
 export type UserRole = 'superadmin' | 'admin' | 'user';
 
 export interface User {
-  email:  string;
-  nombre: string;
-  role:   UserRole;
+  email:               string;
+  nombre:              string;
+  role:                UserRole;
+  mustChangePassword?: boolean;
 }
 
 interface AuthContextType {
-  user:            User | null;
-  login:           (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
-  loginMock:       (role: UserRole) => void;
-  logout:          () => void;
-  isAuthenticated: boolean;
-  isLoading:       boolean;
+  user:                    User | null;
+  login:                   (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  loginMock:               (role: UserRole) => void;
+  logout:                  () => void;
+  clearMustChangePassword: () => void;
+  isAuthenticated:         boolean;
+  isLoading:               boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -74,7 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!socket || !user) return;
 
-    // SuperAdmin eliminó esta cuenta → forzar logout inmediato
     const handleForceLogout = () => {
       setUser(null);
       localStorage.removeItem('alzak_user');
@@ -83,13 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new CustomEvent('alzak:force_logout'));
     };
 
-    // SuperAdmin cambió el rol de este usuario → actualizar sesión local
     const handleRoleChanged = ({ email: targetEmail, role: newRole }: { email: string; role: string }) => {
       if (targetEmail !== user.email) return;
       const updated: User = { ...user, role: newRole as UserRole };
       setUser(updated);
       localStorage.setItem('alzak_user', JSON.stringify(updated));
-      // Notificar a la UI (Toast en Navigation.tsx lo escucha)
       window.dispatchEvent(new CustomEvent('alzak:role_changed', { detail: { role: newRole } }));
     };
 
@@ -137,9 +136,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     disconnectSocket();
   }, []);
 
+  const clearMustChangePassword = useCallback(() => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, mustChangePassword: false };
+      localStorage.setItem('alzak_user', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   return (
     <AuthContext.Provider
-      value={{ user, login, loginMock, logout, isAuthenticated: !!user, isLoading }}
+      value={{ user, login, loginMock, logout, clearMustChangePassword, isAuthenticated: !!user, isLoading }}
     >
       {children}
     </AuthContext.Provider>

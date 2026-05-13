@@ -281,18 +281,6 @@ export default function TaskModal({ task, onClose, focusChat }: TaskModalProps) 
             </div>
           </div>
 
-          {/* Contexto IA */}
-          {task.resumen_meeting && (
-            <div className="bg-alzak-blue/5 dark:bg-alzak-gold/5 border border-alzak-blue/10 dark:border-alzak-gold/10 rounded-[14px] p-4">
-              <p className="text-[10px] font-semibold text-alzak-blue dark:text-alzak-gold uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Contexto IA — de la minuta
-              </p>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{task.resumen_meeting}</p>
-            </div>
-          )}
 
           {/* ── Chat de notas ── */}
           <div ref={chatRef}>

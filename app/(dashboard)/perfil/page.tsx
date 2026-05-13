@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useAuth }      from '@/context/AuthContext';
 import { useTaskStore } from '@/context/TaskStoreContext';
 import { useRouter }    from 'next/navigation';
-import { authFetch }    from '@/lib/api';
 import ThemeToggle      from '@/components/ThemeToggle';
 import { ForcePasswordChangeModal } from '@/components/ForcePasswordChangeModal';
 import {
@@ -26,15 +25,6 @@ const ROLE_LABEL: Record<UserRole, string> = {
   user:       'Investigador',
 };
 
-const MODULE_ICON: Record<string, string> = {
-  Auth:       '🔐',
-  Tareas:     '📋',
-  Proyectos:  '📁',
-  Revisión:   '📄',
-  Usuarios:   '👥',
-  Notas:      '💬',
-};
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getWeekLabel(date: Date) {
   return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
@@ -47,29 +37,12 @@ function startOfWeek(date: Date) {
   return d;
 }
 
-interface ActivityEntry {
-  accion:     string;
-  modulo:     string;
-  detalle:    string;
-  created_at: string;
-}
-
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function PerfilPage() {
   const { user, logout }  = useAuth();
   const { tasks }         = useTaskStore();
   const router            = useRouter();
-  const [showPwdModal,    setShowPwdModal]  = useState(false);
-  const [activity,        setActivity]      = useState<ActivityEntry[]>([]);
-  const [activityLoading, setActivityLoading] = useState(true);
-
-  useEffect(() => {
-    authFetch('/users/me/activity')
-      .then((r) => r.json())
-      .then((d) => setActivity(d.activity ?? []))
-      .catch(() => {})
-      .finally(() => setActivityLoading(false));
-  }, []);
+  const [showPwdModal, setShowPwdModal] = useState(false);
 
   // ── Mis tareas (todos los hooks ANTES del early return) ──────────────────
   const myTasks       = tasks.filter((t) => t.responsable_correo === user?.email);
@@ -306,33 +279,6 @@ export default function PerfilPage() {
           </div>
         </div>
       )}
-
-      {/* ── 3. Historial de actividad ── */}
-      <div className="glass rounded-[24px] border border-slate-200/60 dark:border-slate-700/60 p-5" style={{ background: 'var(--sidebar-bg)' }}>
-        <h3 className="text-sm font-bold text-slate-700 dark:text-white mb-3">Actividad reciente</h3>
-        {activityLoading ? (
-          <div className="space-y-2">
-            {[1,2,3].map((i) => <div key={i} className="h-10 rounded-[10px] bg-slate-100 dark:bg-slate-800 animate-pulse" />)}
-          </div>
-        ) : activity.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-4">Sin actividad registrada</p>
-        ) : (
-          <div className="space-y-2">
-            {activity.map((a, i) => (
-              <div key={i} className="flex items-start gap-3 p-2.5 rounded-[12px] bg-slate-50 dark:bg-slate-800/60">
-                <span className="text-base shrink-0">{MODULE_ICON[a.modulo] ?? '🔹'}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{a.accion} · <span className="font-normal text-slate-500">{a.modulo}</span></p>
-                  <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{a.detalle}</p>
-                </div>
-                <p className="text-[10px] text-slate-400 shrink-0 whitespace-nowrap">
-                  {new Date(a.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* ── Cambiar contraseña ── */}
       <button

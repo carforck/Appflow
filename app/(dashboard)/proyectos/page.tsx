@@ -1,8 +1,10 @@
 "use client";
 
+import { useMemo }         from 'react';
 import { useAuth }         from '@/context/AuthContext';
 import { useRouter }       from 'next/navigation';
 import { useProyectos }    from '@/hooks/useProyectos';
+import { useProjectStore } from '@/context/ProjectStoreContext';
 import { Modal }           from '@/components/ui/Modal';
 import { Button }          from '@/components/ui/Button';
 import { ProjectStats }    from '@/components/proyectos/ProjectStats';
@@ -14,9 +16,19 @@ import { ProjectForm }     from '@/components/proyectos/ProjectForm';
 const ROLE_RANK: Record<string, number> = { superadmin: 3, admin: 2, user: 1 };
 
 export default function ProyectosPage() {
-  const { user }   = useAuth();
-  const router     = useRouter();
-  const proyectos  = useProyectos();
+  const { user }      = useAuth();
+  const router        = useRouter();
+  const proyectos     = useProyectos();
+  const { projects }  = useProjectStore();
+
+  const empresas = useMemo(() =>
+    [...new Set(projects.map((p) => p.empresa).filter(Boolean) as string[])].sort(),
+    [projects],
+  );
+  const financiadores = useMemo(() =>
+    [...new Set(projects.map((p) => p.financiador).filter(Boolean) as string[])].sort(),
+    [projects],
+  );
 
   if (ROLE_RANK[user?.role ?? 'user'] < 2) {
     router.replace('/dashboard');
@@ -100,6 +112,8 @@ export default function ProyectosPage() {
           fieldErrors={fieldErrors}
           isEditing={!!editingId}
           isLoading={isSaving}
+          empresas={empresas}
+          financiadores={financiadores}
           onPatch={patchForm}
           onSubmit={handleSave}
           onCancel={closeModal}

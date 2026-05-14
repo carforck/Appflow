@@ -104,7 +104,7 @@ export default function DashboardPage() {
 
       {/* ── Filtros globales (solo admin+) ── */}
       {isAdmin && (
-        <div className="glass rounded-[20px] p-4">
+        <div className="glass rounded-[20px] p-4 relative z-10">
           <DashboardFilters
             filters={filters}
             projectOptions={projectOptions}

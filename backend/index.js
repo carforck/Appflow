@@ -11,6 +11,7 @@ const { Server } = require('socket.io');
 
 const { runMigrations }                = require('./src/config/migrate');
 const { setIo }                        = require('./src/config/socket');
+const { scheduleDailyReminder }        = require('./src/jobs/dailyReminder');
 const authRoutes         = require('./src/routes/authRoutes');
 const userRoutes         = require('./src/routes/userRoutes');
 const projectRoutes      = require('./src/routes/projectRoutes');
@@ -127,4 +128,5 @@ server.listen(PORT, '0.0.0.0', async () => {
   console.log('🔌 Socket.io activo (JWT rooms: alzak_global · user_{email} · task_{id})');
   console.log(`📡 Escuchando en 0.0.0.0:${PORT}`);
   await runMigrations().catch((e) => console.error('⚠️ Migrate error:', e.message));
+  scheduleDailyReminder();
 });

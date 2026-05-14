@@ -38,15 +38,17 @@ export function DashboardFilters({ filters, projectOptions, empresas, financiado
       setProjQuery('');
     } else {
       const p = projectOptions.find((pr) => pr.id_proyecto === filters.project_id);
-      if (p) setProjQuery(`[${p.id_proyecto}] ${p.nombre_proyecto}`);
+      // Si el proyecto no se encuentra (aún no cargó), limpiar query para mostrar todos
+      setProjQuery(p ? `[${p.id_proyecto}] ${p.nombre_proyecto}` : '');
     }
   }, [filters.project_id, projectOptions]);
 
-  const filteredProjects = projectOptions.filter((p) =>
-    !projQuery ||
-    p.id_proyecto.toLowerCase().includes(projQuery.toLowerCase()) ||
-    p.nombre_proyecto.toLowerCase().includes(projQuery.toLowerCase()),
-  );
+  const filteredProjects = projQuery
+    ? projectOptions.filter((p) =>
+        p.id_proyecto.toLowerCase().includes(projQuery.toLowerCase()) ||
+        p.nombre_proyecto.toLowerCase().includes(projQuery.toLowerCase()),
+      )
+    : projectOptions;
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">

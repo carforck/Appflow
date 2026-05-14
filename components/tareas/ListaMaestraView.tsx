@@ -80,13 +80,13 @@ export function ListaMaestraView() {
             {projOpen && (
               <ul
                 role="listbox"
-                className="absolute z-30 left-0 top-full mt-1 w-max min-w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-y-auto max-h-52 kanban-scroll"
+                className="absolute z-30 left-0 top-full mt-1 w-[320px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-y-auto max-h-52 kanban-scroll"
               >
                 <li
                   role="option"
                   aria-selected={!filterProyecto}
                   onMouseDown={(e) => { e.preventDefault(); setProjQuery(''); setFilterProyecto(''); setProjOpen(false); }}
-                  className={`px-3 py-1.5 text-[11px] cursor-pointer whitespace-nowrap transition-colors ${
+                  className={`px-3 py-1.5 text-[11px] cursor-pointer truncate transition-colors ${
                     !filterProyecto
                       ? 'bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold font-semibold'
                       : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
@@ -111,7 +111,8 @@ export function ListaMaestraView() {
                         setFilterProyecto(p.id_proyecto);
                         setProjOpen(false);
                       }}
-                      className={`px-3 py-1.5 text-[11px] cursor-pointer whitespace-nowrap transition-colors ${
+                      title={`${p.id_proyecto} — ${p.nombre_proyecto}`}
+                      className={`px-3 py-1.5 text-[11px] cursor-pointer truncate transition-colors ${
                         filterProyecto === p.id_proyecto
                           ? 'bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold font-semibold'
                           : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'

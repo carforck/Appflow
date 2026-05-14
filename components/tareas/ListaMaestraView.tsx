@@ -38,7 +38,7 @@ export function ListaMaestraView() {
       setProjQuery('');
     } else {
       const p = projects.find((pr) => pr.id_proyecto === filterProyecto);
-      if (p) setProjQuery(`${p.id_proyecto} — ${p.nombre_proyecto}`);
+      setProjQuery(p ? `${p.id_proyecto} — ${p.nombre_proyecto}` : '');
     }
   }, [filterProyecto, projects]);
 
@@ -94,13 +94,13 @@ export function ListaMaestraView() {
                 >
                   Todos
                 </li>
-                {projects
-                  .filter((p) =>
-                    !projQuery ||
-                    p.id_proyecto.toLowerCase().includes(projQuery.toLowerCase()) ||
-                    p.nombre_proyecto.toLowerCase().includes(projQuery.toLowerCase()),
-                  )
-                  .map((p) => (
+                {(projQuery
+                  ? projects.filter((p) =>
+                      p.id_proyecto.toLowerCase().includes(projQuery.toLowerCase()) ||
+                      p.nombre_proyecto.toLowerCase().includes(projQuery.toLowerCase()),
+                    )
+                  : projects
+                ).map((p) => (
                     <li
                       key={p.id_proyecto}
                       role="option"

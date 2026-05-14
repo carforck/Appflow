@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { TaskWithMeta } from '@/context/TaskStoreContext';
 import type { MockUser, MockProject } from '@/lib/mockData';
 import type { MaestroChanges, ProjectCascade } from '@/hooks/useListaMaestra';
@@ -30,6 +30,9 @@ interface Props {
 
 export default function ListaMaestraRow({ task, users, projects, projectMap, onUpdate }: Props) {
   const [localProjId,  setLocalProjId]  = useState(task.id_proyecto);
+  const [projQuery,    setProjQuery]    = useState(task.id_proyecto);
+  const [projOpen,     setProjOpen]     = useState(false);
+  const projRef = useRef<HTMLDivElement>(null);
   const [editDesc,     setEditDesc]     = useState(false);
   const [descValue,    setDescValue]    = useState(task.tarea_descripcion);
   const [showUsers,    setShowUsers]    = useState(false);
@@ -38,17 +41,32 @@ export default function ListaMaestraRow({ task, users, projects, projectMap, onU
   const [fechaInicio,  setFechaInicio]  = useState(task.fecha_inicio  ?? '');
   const [fechaFin,     setFechaFin]     = useState(task.fecha_entrega ?? '');
 
-  useEffect(() => { setLocalProjId(task.id_proyecto);      }, [task.id_proyecto]);
+  useEffect(() => { setLocalProjId(task.id_proyecto); setProjQuery(task.id_proyecto); }, [task.id_proyecto]);
   useEffect(() => { setDescValue(task.tarea_descripcion);  }, [task.tarea_descripcion]);
   useEffect(() => { setFechaInicio(task.fecha_inicio ?? ''); }, [task.fecha_inicio]);
   useEffect(() => { setFechaFin(task.fecha_entrega ?? '');   }, [task.fecha_entrega]);
 
   const cascade = projectMap[localProjId];
 
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (projRef.current && !projRef.current.contains(e.target as Node)) setProjOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   const handleProject = (newId: string) => {
     setLocalProjId(newId);
+    setProjQuery(newId);
     onUpdate({ id_proyecto: newId });
   };
+
+  const filteredProjects = projects.filter((p) =>
+    !projQuery ||
+    p.id_proyecto.toLowerCase().includes(projQuery.toLowerCase()) ||
+    p.nombre_proyecto.toLowerCase().includes(projQuery.toLowerCase()),
+  );
 
   const filteredUsers = users
     .filter((u) => u.activo && (!userSearch
@@ -59,22 +77,62 @@ export default function ListaMaestraRow({ task, users, projects, projectMap, onU
   return (
     <tr className="border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors align-top">
 
-      {/* ID Proyecto — select por ID */}
+      {/* ID Proyecto — combobox */}
       <td className="px-2 py-1.5">
-        <select value={localProjId} onChange={(e) => handleProject(e.target.value)} className={SEL} aria-label="ID de proyecto">
-          {projects.map((p) => (
-            <option key={p.id_proyecto} value={p.id_proyecto}>{p.id_proyecto}</option>
-          ))}
-        </select>
+        <div ref={projRef} className="relative">
+          <div className="relative">
+            <input
+              type="text"
+              value={projQuery}
+              onChange={(e) => { setProjQuery(e.target.value); setProjOpen(true); }}
+              onFocus={() => setProjOpen(true)}
+              autoComplete="off"
+              aria-label="ID de proyecto"
+              className={SEL + ' pr-5'}
+            />
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={() => setProjOpen((v) => !v)}
+              className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400"
+              aria-label="Ver proyectos"
+            >
+              <svg className={`w-2.5 h-2.5 transition-transform ${projOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+          {projOpen && filteredProjects.length > 0 && (
+            <ul
+              role="listbox"
+              className="absolute z-30 left-0 top-full mt-1 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-y-auto max-h-44 kanban-scroll"
+            >
+              {filteredProjects.map((p) => (
+                <li
+                  key={p.id_proyecto}
+                  role="option"
+                  aria-selected={localProjId === p.id_proyecto}
+                  onMouseDown={(e) => { e.preventDefault(); handleProject(p.id_proyecto); setProjOpen(false); }}
+                  className={`px-3 py-1.5 text-[10px] cursor-pointer transition-colors ${
+                    localProjId === p.id_proyecto
+                      ? 'bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold font-semibold'
+                      : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span className="font-mono text-alzak-blue dark:text-alzak-gold mr-1">[{p.id_proyecto}]</span>
+                  {p.nombre_proyecto}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </td>
 
-      {/* Nombre Proyecto — select por nombre, mismo state → bidireccional */}
+      {/* Nombre Proyecto — auto-populated */}
       <td className="px-2 py-1.5">
-        <select value={localProjId} onChange={(e) => handleProject(e.target.value)} className={SEL} aria-label="Nombre de proyecto">
-          {projects.map((p) => (
-            <option key={p.id_proyecto} value={p.id_proyecto}>{p.nombre_proyecto}</option>
-          ))}
-        </select>
+        <span className="text-[10px] text-slate-700 dark:text-slate-200 block leading-tight">
+          {projects.find((p) => p.id_proyecto === localProjId)?.nombre_proyecto ?? '—'}
+        </span>
       </td>
 
       {/* Empresa — auto-populated desde el proyecto seleccionado */}

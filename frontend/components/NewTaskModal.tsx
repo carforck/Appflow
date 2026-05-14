@@ -27,7 +27,10 @@ export default function NewTaskModal({ onClose }: Props) {
   const { addToast } = useToast();
 
   // Form state
-  const [proyectoId,   setProyectoId]   = useState('');
+  const [proyectoId,    setProyectoId]    = useState('');
+  const [proyectoQuery, setProyectoQuery] = useState('');
+  const [proyectoOpen,  setProyectoOpen]  = useState(false);
+  const proyectoRef = useRef<HTMLDivElement>(null);
   const [descripcion,  setDescripcion]  = useState('');
   const [prioridad,    setPrioridad]    = useState<TareaPrioridad>('Media');
   const [fechaInicio,  setFechaInicio]  = useState(today());
@@ -42,12 +45,29 @@ export default function NewTaskModal({ onClose }: Props) {
   const [showDropdown, setShowDropdown] = useState(false);
   const userInputRef = useRef<HTMLInputElement>(null);
 
+  const filteredProjects = projects
+    .filter((p) => p.estado === 'Activo')
+    .filter((p) =>
+      !proyectoQuery ||
+      p.id_proyecto.toLowerCase().includes(proyectoQuery.toLowerCase()) ||
+      p.nombre_proyecto.toLowerCase().includes(proyectoQuery.toLowerCase()),
+    );
+
   const filteredUsers = users.filter(
     (u) =>
       u.activo &&
       (u.nombre_completo.toLowerCase().includes(userSearch.toLowerCase()) ||
         u.correo.toLowerCase().includes(userSearch.toLowerCase())),
   ).slice(0, 6);
+
+  // Click-outside proyecto combobox
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (proyectoRef.current && !proyectoRef.current.contains(e.target as Node)) setProyectoOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Close on Escape
   useEffect(() => {
@@ -156,29 +176,58 @@ export default function NewTaskModal({ onClose }: Props) {
             <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
               Proyecto <span className="text-red-500">*</span>
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              {/* ID */}
-              <select
-                value={proyectoId}
-                onChange={(e) => { setProyectoId(e.target.value); clearError('proyecto'); }}
-                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-alzak-blue/40"
-              >
-                <option value="">— ID —</option>
-                {projects.filter((p) => p.estado === 'Activo').map((p) => (
-                  <option key={p.id_proyecto} value={p.id_proyecto}>{p.id_proyecto}</option>
-                ))}
-              </select>
-              {/* Nombre */}
-              <select
-                value={proyectoId}
-                onChange={(e) => { setProyectoId(e.target.value); clearError('proyecto'); }}
-                className="w-full text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-alzak-blue/40"
-              >
-                <option value="">— Nombre —</option>
-                {projects.filter((p) => p.estado === 'Activo').map((p) => (
-                  <option key={p.id_proyecto} value={p.id_proyecto}>{p.nombre_proyecto}</option>
-                ))}
-              </select>
+            <div ref={proyectoRef} className="relative">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={proyectoQuery}
+                  onChange={(e) => { setProyectoQuery(e.target.value); setProyectoId(''); setProyectoOpen(true); clearError('proyecto'); }}
+                  onFocus={() => setProyectoOpen(true)}
+                  placeholder="Buscar por ID o nombre..."
+                  autoComplete="off"
+                  className="w-full text-sm px-3 py-2 pr-8 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-alzak-blue/40"
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setProyectoOpen((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  aria-label="Ver proyectos"
+                >
+                  <svg className={`w-3.5 h-3.5 transition-transform ${proyectoOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+              {proyectoOpen && filteredProjects.length > 0 && (
+                <ul
+                  role="listbox"
+                  className="absolute z-20 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg overflow-y-auto max-h-44 kanban-scroll"
+                >
+                  {filteredProjects.map((p) => (
+                    <li
+                      key={p.id_proyecto}
+                      role="option"
+                      aria-selected={proyectoId === p.id_proyecto}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setProyectoId(p.id_proyecto);
+                        setProyectoQuery(`[${p.id_proyecto}] ${p.nombre_proyecto}`);
+                        setProyectoOpen(false);
+                        clearError('proyecto');
+                      }}
+                      className={`px-4 py-2 text-sm cursor-pointer transition-colors ${
+                        proyectoId === p.id_proyecto
+                          ? 'bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold font-semibold'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <span className="font-mono text-[11px] text-alzak-blue dark:text-alzak-gold mr-2">[{p.id_proyecto}]</span>
+                      {p.nombre_proyecto}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             {/* Cascade */}
             {selectedProject && (

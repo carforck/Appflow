@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useRef, useEffect } from 'react';
 import { useListaMaestra } from '@/hooks/useListaMaestra';
 import ListaMaestraRow from './ListaMaestraRow';
 import type { TareaStatus, TareaPrioridad } from '@/lib/mockData';
@@ -20,6 +21,27 @@ export function ListaMaestraView() {
     update, exportPDF,
   } = useListaMaestra();
 
+  const [projQuery, setProjQuery] = useState('');
+  const [projOpen,  setProjOpen]  = useState(false);
+  const projRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (projRef.current && !projRef.current.contains(e.target as Node)) setProjOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    if (!filterProyecto) {
+      setProjQuery('');
+    } else {
+      const p = projects.find((pr) => pr.id_proyecto === filterProyecto);
+      if (p) setProjQuery(`${p.id_proyecto} — ${p.nombre_proyecto}`);
+    }
+  }, [filterProyecto, projects]);
+
   const makeUpdater = (taskId: number) =>
     (changes: Parameters<typeof update>[1]) => update(taskId, changes);
 
@@ -32,18 +54,75 @@ export function ListaMaestraView() {
         {/* Proyecto */}
         <div className="flex flex-col gap-1 min-w-[140px]">
           <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Proyecto</label>
-          <select
-            value={filterProyecto}
-            onChange={(e) => setFilterProyecto(e.target.value)}
-            className="text-[11px] px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-alzak-blue/40"
-          >
-            <option value="">Todos</option>
-            {projects.map((p) => (
-              <option key={p.id_proyecto} value={p.id_proyecto}>
-                {p.id_proyecto} — {p.nombre_proyecto}
-              </option>
-            ))}
-          </select>
+          <div ref={projRef} className="relative">
+            <div className="relative">
+              <input
+                type="text"
+                value={projQuery}
+                onChange={(e) => { setProjQuery(e.target.value); setFilterProyecto(''); setProjOpen(true); }}
+                onFocus={() => setProjOpen(true)}
+                placeholder="Todos"
+                autoComplete="off"
+                className="text-[11px] px-2 py-1.5 pr-6 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-alzak-blue/40 w-full"
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => setProjOpen((v) => !v)}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400"
+                aria-label="Ver proyectos"
+              >
+                <svg className={`w-2.5 h-2.5 transition-transform ${projOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+            {projOpen && (
+              <ul
+                role="listbox"
+                className="absolute z-30 left-0 top-full mt-1 w-max min-w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl overflow-y-auto max-h-52 kanban-scroll"
+              >
+                <li
+                  role="option"
+                  aria-selected={!filterProyecto}
+                  onMouseDown={(e) => { e.preventDefault(); setProjQuery(''); setFilterProyecto(''); setProjOpen(false); }}
+                  className={`px-3 py-1.5 text-[11px] cursor-pointer whitespace-nowrap transition-colors ${
+                    !filterProyecto
+                      ? 'bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold font-semibold'
+                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  Todos
+                </li>
+                {projects
+                  .filter((p) =>
+                    !projQuery ||
+                    p.id_proyecto.toLowerCase().includes(projQuery.toLowerCase()) ||
+                    p.nombre_proyecto.toLowerCase().includes(projQuery.toLowerCase()),
+                  )
+                  .map((p) => (
+                    <li
+                      key={p.id_proyecto}
+                      role="option"
+                      aria-selected={filterProyecto === p.id_proyecto}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setProjQuery(`${p.id_proyecto} — ${p.nombre_proyecto}`);
+                        setFilterProyecto(p.id_proyecto);
+                        setProjOpen(false);
+                      }}
+                      className={`px-3 py-1.5 text-[11px] cursor-pointer whitespace-nowrap transition-colors ${
+                        filterProyecto === p.id_proyecto
+                          ? 'bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold font-semibold'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {p.id_proyecto} — {p.nombre_proyecto}
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
         </div>
 
         {/* Responsable */}

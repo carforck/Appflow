@@ -135,13 +135,14 @@ export function DashboardFilters({ filters, projectOptions, empresas, financiado
                   key={p.id_proyecto}
                   role="option"
                   aria-selected={filters.project_id === p.id_proyecto}
+                  title={`[${p.id_proyecto}] ${p.nombre_proyecto}`}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     setProjQuery(`[${p.id_proyecto}] ${p.nombre_proyecto}`);
                     onChange({ project_id: p.id_proyecto });
                     setProjOpen(false);
                   }}
-                  className={`px-3 py-1.5 text-xs cursor-pointer transition-colors ${
+                  className={`px-3 py-1.5 text-xs cursor-pointer truncate transition-colors ${
                     filters.project_id === p.id_proyecto
                       ? 'bg-alzak-blue/10 dark:bg-alzak-gold/10 text-alzak-blue dark:text-alzak-gold font-semibold'
                       : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'

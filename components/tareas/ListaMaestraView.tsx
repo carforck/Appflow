@@ -49,7 +49,7 @@ export function ListaMaestraView() {
     <div className="space-y-4">
 
       {/* ── Filtros ── */}
-      <div className="glass rounded-[16px] p-3 flex flex-wrap gap-2 items-end" style={{ background: 'var(--sidebar-bg)' }}>
+      <div className="glass rounded-[16px] p-3 flex flex-wrap gap-2 items-end relative z-10" style={{ background: 'var(--sidebar-bg)' }}>
 
         {/* Proyecto */}
         <div className="flex flex-col gap-1 min-w-[140px]">

@@ -81,3 +81,55 @@ export function groupByDate<T extends { completedAt?: string | null; fecha_entre
   }
   return map;
 }
+
+// ── Agrupación y formateo por semana ISO ──────────────────────────────────────
+
+export function groupByWeek<T extends { semana_carga?: string | null; completedAt?: string | null; fecha_entrega: string }>(
+  tasks: T[],
+): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  const sorted = [...tasks].sort((a, b) => {
+    // Ordenar semanas más recientes primero
+    const wa = a.semana_carga ?? '0000-W00';
+    const wb = b.semana_carga ?? '0000-W00';
+    if (wa !== wb) return wb.localeCompare(wa);
+    const da = a.completedAt ?? a.fecha_entrega;
+    const db = b.completedAt ?? b.fecha_entrega;
+    return new Date(db).getTime() - new Date(da).getTime();
+  });
+  for (const t of sorted) {
+    const key = t.semana_carga ?? 'anterior';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(t);
+  }
+  return map;
+}
+
+function getWeekDateRange(weekStr: string): { start: Date; end: Date } {
+  const [yearStr, wStr] = weekStr.split('-W');
+  const year = parseInt(yearStr, 10);
+  const week = parseInt(wStr, 10);
+  // Jan 4 is always in week 1 (ISO 8601)
+  const jan4 = new Date(year, 0, 4);
+  const dayOfWeek = jan4.getDay() || 7; // lun=1..dom=7
+  const monday_w1 = new Date(jan4);
+  monday_w1.setDate(jan4.getDate() - dayOfWeek + 1);
+  const monday = new Date(monday_w1);
+  monday.setDate(monday_w1.getDate() + (week - 1) * 7);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return { start: monday, end: sunday };
+}
+
+export function formatWeekLabel(weekStr: string): string {
+  if (weekStr === 'anterior') return 'Semanas anteriores';
+  try {
+    const [yearStr, wStr] = weekStr.split('-W');
+    const weekNum = parseInt(wStr, 10);
+    const { start, end } = getWeekDateRange(weekStr);
+    const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
+    const startFmt = start.toLocaleDateString('es-ES', opts);
+    const endFmt   = end.toLocaleDateString('es-ES', opts);
+    return `Semana ${weekNum} · ${yearStr}  ·  ${startFmt} – ${endFmt}`;
+  } catch { return weekStr; }
+}

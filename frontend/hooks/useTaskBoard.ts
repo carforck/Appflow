@@ -7,6 +7,16 @@ import { useTaskStore, TaskWithMeta } from '@/context/TaskStoreContext';
 import { authFetch } from '@/lib/api';
 import type { TareaPrioridad, TareaStatus } from '@/lib/mockData';
 
+// ── Semana ISO actual (YYYY-WNN) — mismo algoritmo que el backend ─────────────
+function getISOWeek(date = new Date()): string {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+
 export type TaskBoardTab = 'board' | 'historial' | 'lista';
 
 export interface ProyectoOption    { id: string;    nombre: string }
@@ -14,7 +24,8 @@ export interface ResponsableOption { correo: string; nombre: string }
 
 export interface TaskBoardState {
   // Datos
-  filtered:      TaskWithMeta[];
+  filtered:      TaskWithMeta[];  // todas las tareas (filtros activos)
+  boardTasks:    TaskWithMeta[];  // para el Kanban: excluye completadas de semanas pasadas
   activeTasks:   TaskWithMeta[];
   completedCount: number;
   isAdmin:       boolean;
@@ -154,11 +165,20 @@ export function useTaskBoard(initialOpenId?: string | null, initialFocus?: strin
     return base;
   }, [adminBase, filterPrioridad, filterProyecto, filterResponsable, searchText]);
 
+  const currentWeek = useMemo(() => getISOWeek(), []);
+
+  // Kanban solo muestra completadas de la semana en curso; las de semanas anteriores
+  // pasan al Historial automáticamente para mantener el tablero limpio.
+  const boardTasks = useMemo(
+    () => filtered.filter((t) => t.status !== 'Completada' || t.semana_carga === currentWeek),
+    [filtered, currentWeek],
+  );
+
   const activeTasks    = filtered.filter((t) => t.status !== 'Completada');
   const completedCount = filtered.filter((t) => t.status === 'Completada').length;
 
   return {
-    filtered, activeTasks, completedCount, isAdmin,
+    filtered, boardTasks, activeTasks, completedCount, isAdmin,
     proyectoOptions, responsableOptions,
     tab, searchText, filterPrioridad, filterStatus, filterProyecto, filterResponsable,
     newTaskOpen, modalTask, chatFocus,

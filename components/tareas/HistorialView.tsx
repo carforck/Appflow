@@ -2,13 +2,13 @@
 
 import { useMemo } from 'react';
 import { TaskWithMeta } from '@/context/TaskStoreContext';
-import { PRIORIDAD_BADGE, formatDateGroup, groupByDate } from './taskBoardConfig';
+import { PRIORIDAD_BADGE, groupByWeek, formatWeekLabel } from './taskBoardConfig';
 
 export function HistorialView({
   tasks, onCardClick,
 }: { tasks: TaskWithMeta[]; onCardClick: (t: TaskWithMeta) => void }) {
   const completadas = tasks.filter((t) => t.status === 'Completada');
-  const grouped     = useMemo(() => groupByDate(completadas), [completadas]);
+  const grouped     = useMemo(() => groupByWeek(completadas), [completadas]);
 
   if (completadas.length === 0) {
     return (
@@ -26,20 +26,20 @@ export function HistorialView({
 
   return (
     <div className="space-y-6">
-      {Array.from(grouped.entries()).map(([dateKey, dayTasks]) => (
-        <div key={dateKey}>
+      {Array.from(grouped.entries()).map(([weekKey, weekTasks]) => (
+        <div key={weekKey}>
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-full capitalize">
-              🟢 {formatDateGroup(dateKey)}
+            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-full">
+              🟢 {formatWeekLabel(weekKey)}
             </span>
             <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700/60" />
             <span className="text-[10px] text-slate-400">
-              {dayTasks.length} tarea{dayTasks.length !== 1 ? 's' : ''}
+              {weekTasks.length} tarea{weekTasks.length !== 1 ? 's' : ''}
             </span>
           </div>
 
           <div className="space-y-2">
-            {dayTasks.map((t) => {
+            {weekTasks.map((t) => {
               const initials = t.responsable_nombre.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
               return (
                 <div

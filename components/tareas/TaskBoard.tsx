@@ -27,7 +27,7 @@ export function TaskBoard(props: TaskBoardState) {
   }, [proyOpen]);
 
   const {
-    filtered, activeTasks, completedCount, isAdmin,
+    filtered, boardTasks, activeTasks, completedCount, isAdmin,
     proyectoOptions, responsableOptions,
     tab, searchText, filterPrioridad, filterStatus, filterProyecto, filterResponsable,
     newTaskOpen, modalTask, chatFocus,
@@ -245,7 +245,7 @@ export function TaskBoard(props: TaskBoardState) {
           <div className="grid grid-cols-3 gap-3 mt-3">
             {ALL_STATUSES.map((s: TareaStatus) => {
               const cfg      = STATUS_CFG[s];
-              const count    = filtered.filter((t) => t.status === s).length;
+              const count    = boardTasks.filter((t) => t.status === s).length;
               const isActive = filterStatus === s;
               return (
                 <button
@@ -284,9 +284,9 @@ export function TaskBoard(props: TaskBoardState) {
                 )}
               </div>
             ) : isAdmin ? (
-              <KanbanAdminView tasks={filtered} onCardClick={openModal} filterStatus={filterStatus} onEdit={openEdit} onDelete={requestDelete} />
+              <KanbanAdminView tasks={boardTasks} onCardClick={openModal} filterStatus={filterStatus} onEdit={openEdit} onDelete={requestDelete} />
             ) : (
-              <KanbanUserView tasks={filtered} onCardClick={openModal} filterStatus={filterStatus} />
+              <KanbanUserView tasks={boardTasks} onCardClick={openModal} filterStatus={filterStatus} />
             )
           ) : (
             <HistorialView tasks={filtered} onCardClick={openModal} />

@@ -18,6 +18,7 @@ export interface MockTarea {
   fecha_inicio?: string;
   fecha_entrega: string;
   fecha_finalizacion?: string | null;
+  semana_carga?: string | null;
   resumen_meeting?: string;
 }
 

@@ -40,7 +40,10 @@ export function HistorialView({
 
           <div className="space-y-2">
             {weekTasks.map((t) => {
-              const initials = t.responsable_nombre.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+              const initials   = t.responsable_nombre.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+              const fechaHecho = t.completedAt
+                ? new Date(t.completedAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+                : null;
               return (
                 <div
                   key={t.id}
@@ -59,6 +62,12 @@ export function HistorialView({
                         {initials}
                       </div>
                       <span className="text-[9px] text-slate-400 truncate">{t.responsable_nombre}</span>
+                      {fechaHecho && (
+                        <>
+                          <span className="text-[9px] text-slate-400">·</span>
+                          <span className="text-[9px] text-emerald-600 dark:text-emerald-400 shrink-0">✓ {fechaHecho}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${PRIORIDAD_BADGE[t.prioridad]}`}>

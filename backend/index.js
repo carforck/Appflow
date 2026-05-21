@@ -83,6 +83,7 @@ io.on('connection', (socket) => {
   if (email) {
     socket.join('alzak_global');      // room compartido por todos
     socket.join(`user_${email}`);     // room privado del usuario
+    if (role === 'admin' || role === 'superadmin') socket.join('admins');
     if (role === 'superadmin') socket.join('superadmins');
 
     // Rastrear usuario activo (múltiples tabs = múltiples sockets)

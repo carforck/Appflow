@@ -24,7 +24,8 @@ function emitNotifAlert(destinatario_correo, payload = {}) {
   if (destinatario_correo) {
     _io.to(`user_${destinatario_correo}`).emit('notification_alert', data);
   } else {
-    _io.to('alzak_global').emit('notification_alert', data);
+    // Solo admins y superadmins reciben alertas globales (auditoria, ingesta, notas de user)
+    _io.to('admins').emit('notification_alert', data);
   }
 }
 

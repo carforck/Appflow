@@ -132,6 +132,18 @@ const SUPPORT_TABLES = [
     `,
   },
   {
+    name: 'notification_reads',
+    sql: `
+      CREATE TABLE IF NOT EXISTS notification_reads (
+        id_notification INT          NOT NULL,
+        user_email      VARCHAR(255) NOT NULL,
+        read_at         DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id_notification, user_email),
+        INDEX idx_user (user_email)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `,
+  },
+  {
     name: 'activity_logs',
     sql: `
       CREATE TABLE IF NOT EXISTS activity_logs (

@@ -49,6 +49,13 @@ const COLUMN_MIGRATIONS = [
     sql:    'ALTER TABLE meetings ADD COLUMN session_key VARCHAR(255) NULL UNIQUE AFTER id',
     desc:   'Clave de idempotencia — evita duplicar commit-staging',
   },
+  {
+    table:  'tasks',
+    column: 'semana_carga',
+    check:  "SHOW COLUMNS FROM tasks LIKE 'semana_carga'",
+    sql:    "ALTER TABLE tasks ADD COLUMN semana_carga CHAR(8) NULL AFTER fecha_finalizacion",
+    desc:   'Semana ISO (YYYY-WNN) en que la tarea fue aprobada/creada en el board',
+  },
   // Garantizar que responsable_correo sea nullable (requerido para FK SET NULL)
   {
     table:  'tasks',

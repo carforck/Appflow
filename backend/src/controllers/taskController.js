@@ -9,6 +9,16 @@ const { queueApprovedTask, sendConsolidatedEmails, sendTaskUpdateEmail } = requi
 const { emitNotifAlert, emitTaskUpdated, emitTaskCreated } = require('../config/socket');
 const { logActivity }       = require('../utils/logActivity');
 
+// ── Semana ISO (YYYY-WNN) para etiquetar tareas al entrar al board ────────────
+function getISOWeek(date = new Date()) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7; // lun=1 … dom=7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum); // jueves más cercano
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+
 // ── Caché de idempotencia (en memoria, TTL 15 s) ──────────────────────────────
 const idempotencyCache = new Map();
 const IDEMPOTENCY_TTL  = 30_000;
@@ -58,6 +68,7 @@ async function getTareas(req, res) {
         t.fecha_inicio,
         t.fecha_entrega,
         t.fecha_finalizacion,
+        t.semana_carga,
         m.resumen_ejecutivo AS resumen_meeting
       FROM tasks t
       LEFT JOIN meetings  m ON t.id_meeting  = m.id
@@ -104,15 +115,15 @@ async function crearTarea(req, res) {
 
     // Admins/superadmins crean tareas directamente en 'Pendiente' (visible en el board).
     // Solo el procesador de minutas crea en 'Pendiente Revisión'.
-    const estadoInicial = (req.user.role === 'admin' || req.user.role === 'superadmin')
-      ? 'Pendiente'
-      : 'Pendiente Revisión';
+    const esAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
+    const estadoInicial = esAdmin ? 'Pendiente' : 'Pendiente Revisión';
+    const semana        = esAdmin ? getISOWeek() : null;
 
     const [result] = await pool.query(
       `INSERT INTO tasks (id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo,
-        prioridad, fecha_inicio, fecha_entrega, estado_tarea)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id_proyecto, tarea_descripcion.trim(), responsable_nombre || null, responsable_correo || null, prioridad, fechaInicioFinal, fecha_entrega, estadoInicial]
+        prioridad, fecha_inicio, fecha_entrega, estado_tarea, semana_carga)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id_proyecto, tarea_descripcion.trim(), responsable_nombre || null, responsable_correo || null, prioridad, fechaInicioFinal, fecha_entrega, estadoInicial, semana]
     );
     const taskId = result.insertId;
 
@@ -237,8 +248,8 @@ async function aprobarRevision(req, res) {
     if (!task) return res.status(404).json({ error: 'Tarea no encontrada o ya procesada' });
 
     await pool.query(
-      `UPDATE tasks SET estado_tarea = 'Pendiente' WHERE id = ? AND estado_tarea = 'Pendiente Revisión'`,
-      [id]
+      `UPDATE tasks SET estado_tarea = 'Pendiente', semana_carga = ? WHERE id = ? AND estado_tarea = 'Pendiente Revisión'`,
+      [getISOWeek(), id]
     );
     console.log(`✅ Tarea #${id} aprobada → Pendiente`);
 

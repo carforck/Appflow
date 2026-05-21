@@ -56,20 +56,19 @@ export function HistorialView({
                       {t.tarea_descripcion}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="font-mono text-[9px] text-alzak-blue dark:text-alzak-gold">{t.id_proyecto}</span>
-                      <span className="text-[9px] text-slate-400">·</span>
+                      <span className="font-mono text-[9px] text-alzak-blue dark:text-alzak-gold shrink-0">{t.id_proyecto}</span>
+                      <span className="text-[9px] text-slate-400 shrink-0">·</span>
                       <div className="w-4 h-4 rounded-full bg-alzak-blue/15 dark:bg-alzak-gold/20 flex items-center justify-center text-[8px] font-bold text-alzak-blue dark:text-alzak-gold shrink-0">
                         {initials}
                       </div>
-                      <span className="text-[9px] text-slate-400 truncate">{t.responsable_nombre}</span>
-                      {fechaHecho && (
-                        <>
-                          <span className="text-[9px] text-slate-400">·</span>
-                          <span className="text-[9px] text-emerald-600 dark:text-emerald-400 shrink-0">✓ {fechaHecho}</span>
-                        </>
-                      )}
+                      <span className="text-[9px] text-slate-400 truncate min-w-0">{t.responsable_nombre}</span>
                     </div>
                   </div>
+                  {fechaHecho && (
+                    <span className="text-[9px] text-emerald-600 dark:text-emerald-400 shrink-0 whitespace-nowrap">
+                      ✓ {fechaHecho}
+                    </span>
+                  )}
                   <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${PRIORIDAD_BADGE[t.prioridad]}`}>
                     {t.prioridad}
                   </span>

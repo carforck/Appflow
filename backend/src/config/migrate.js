@@ -151,6 +151,19 @@ const SUPPORT_TABLES = [
     `,
   },
   {
+    name: 'nota_reads',
+    sql: `
+      CREATE TABLE IF NOT EXISTS nota_reads (
+        id_nota     INT          NOT NULL,
+        user_email  VARCHAR(255) NOT NULL,
+        user_nombre VARCHAR(255),
+        read_at     DATETIME     DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id_nota, user_email),
+        INDEX idx_nota (id_nota)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `,
+  },
+  {
     name: 'activity_logs',
     sql: `
       CREATE TABLE IF NOT EXISTS activity_logs (
@@ -278,6 +291,16 @@ const FK_MIGRATIONS = [
     sql: `ALTER TABLE pending_emails
           ADD CONSTRAINT fk_emails_tarea
           FOREIGN KEY (id_tarea) REFERENCES tasks(id)
+          ON DELETE CASCADE ON UPDATE CASCADE`,
+  },
+  // nota_reads.id_nota → task_notas.id
+  {
+    name: 'fk_nota_reads_nota',
+    desc: 'nota_reads.id_nota → task_notas.id (CASCADE)',
+    pre:  [],
+    sql: `ALTER TABLE nota_reads
+          ADD CONSTRAINT fk_nota_reads_nota
+          FOREIGN KEY (id_nota) REFERENCES task_notas(id)
           ON DELETE CASCADE ON UPDATE CASCADE`,
   },
 ];

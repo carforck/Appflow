@@ -349,6 +349,19 @@ export default function TaskModal({ task, onClose, focusChat }: TaskModalProps) 
                             {formatChatTs(nota.created_at)}
                           </span>
                         )}
+                        {isOwn && !nota._pending && !nota._error && (() => {
+                          const readers = nota.readers?.filter((r) => r.email !== nota.usuario_correo) ?? [];
+                          if (readers.length === 0) return null;
+                          const nombres = readers.map((r) => r.nombre.split(' ')[0]).join(', ');
+                          return (
+                            <span
+                              title={`Visto por: ${nombres}`}
+                              className="text-[9px] text-slate-400 dark:text-slate-500 cursor-default select-none flex items-center gap-0.5"
+                            >
+                              👁 {readers.length}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>

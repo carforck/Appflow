@@ -20,13 +20,78 @@ async function getNotas(req, res) {
       }
     }
 
-    const [notas] = await pool.query(
+    const [notaRows] = await pool.query(
       'SELECT * FROM task_notas WHERE id_tarea = ? ORDER BY created_at ASC',
       [id],
     );
+
+    if (notaRows.length === 0) return res.json({ notas: [] });
+
+    const notaIds = notaRows.map((n) => n.id);
+    const [readerRows] = await pool.query(
+      `SELECT id_nota, user_email, user_nombre, read_at
+       FROM nota_reads
+       WHERE id_nota IN (?)
+       ORDER BY read_at ASC`,
+      [notaIds],
+    );
+
+    const readerMap = new Map();
+    for (const r of readerRows) {
+      if (!readerMap.has(r.id_nota)) readerMap.set(r.id_nota, []);
+      readerMap.get(r.id_nota).push({
+        email:   r.user_email,
+        nombre:  r.user_nombre ?? r.user_email,
+        read_at: r.read_at,
+      });
+    }
+
+    const notas = notaRows.map((n) => ({ ...n, readers: readerMap.get(n.id) ?? [] }));
     res.json({ notas });
   } catch (err) {
     console.error('❌ GET /tareas/:id/notas:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+async function batchMarkRead(req, res) {
+  const { id }                  = req.params;
+  const { email, role, nombre } = req.user;
+
+  try {
+    if (role === 'user') {
+      const [[task]] = await pool.query('SELECT responsable_correo FROM tasks WHERE id = ?', [id]);
+      if (!task || task.responsable_correo !== email) {
+        return res.status(403).json({ error: 'Sin acceso a esta tarea' });
+      }
+    }
+
+    // Solo notas que no son del propio usuario
+    const [notaRows] = await pool.query(
+      'SELECT id FROM task_notas WHERE id_tarea = ? AND usuario_correo != ?',
+      [id, email],
+    );
+
+    if (notaRows.length === 0) return res.json({ marked: 0 });
+
+    const autorNombre = nombre ?? email;
+    const values      = notaRows.map((r) => [r.id, email, autorNombre]);
+
+    await pool.query(
+      'INSERT IGNORE INTO nota_reads (id_nota, user_email, user_nombre) VALUES ?',
+      [values],
+    );
+
+    getIo()?.to(`task_${id}`).emit('nota_reads_batch', {
+      id_tarea:   parseInt(id, 10),
+      user_email: email,
+      user_nombre: autorNombre,
+      read_at:    new Date().toISOString(),
+    });
+
+    res.json({ marked: notaRows.length });
+  } catch (err) {
+    console.error('❌ POST /tareas/:id/notas/read-batch:', err.message);
     res.status(500).json({ error: err.message });
   }
 }
@@ -135,4 +200,4 @@ async function getNotasResumen(req, res) {
   }
 }
 
-module.exports = { getNotas, addNota, getNotasResumen };
+module.exports = { getNotas, addNota, getNotasResumen, batchMarkRead };

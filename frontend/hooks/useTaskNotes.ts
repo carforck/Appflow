@@ -6,6 +6,12 @@ import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useSocket } from './useSocket';
 
+export interface NotaReader {
+  email:   string;
+  nombre:  string;
+  read_at: string;
+}
+
 export interface TaskNota {
   id:             number;
   id_tarea:       number;
@@ -13,6 +19,7 @@ export interface TaskNota {
   usuario_nombre: string;
   mensaje:        string;
   created_at:     string;
+  readers?:  NotaReader[];
   _pending?: true; // UI-only: optimistic — esperando confirmación del servidor
   _error?:   true; // UI-only: el servidor rechazó — desaparece en ~2 s
 }
@@ -48,19 +55,37 @@ export function useTaskNotes(taskId: number | null) {
     fetchNotas();
   }, [fetchNotas]);
 
-  // ── Socket: chat en tiempo real + typing indicators ───────────────────────
+  // ── Socket: chat en tiempo real + typing indicators + read receipts ─────────
   useEffect(() => {
     if (!socket || !taskId) return;
 
     socket.emit('join_task', taskId);
 
+    // Marcar todas las notas como leídas al abrir
+    authFetch(`/tareas/${taskId}/notas/read-batch`, { method: 'POST' }).catch(() => {});
+
     const handleNewNote = (nota: TaskNota) => {
       if (nota.id_tarea !== taskId) return;
-      setTypingUser(null); // limpia el indicador de escritura al llegar la nota
+      setTypingUser(null);
       setNotas((prev) => {
         if (prev.some((n) => n.id === nota.id)) return prev; // deduplicar
-        return [...prev, nota];
+        return [...prev, { ...nota, readers: nota.readers ?? [] }];
       });
+    };
+
+    const handleReadsBatch = ({
+      id_tarea, user_email, user_nombre, read_at,
+    }: { id_tarea: number; user_email: string; user_nombre: string; read_at: string }) => {
+      if (id_tarea !== taskId) return;
+      setNotas((prev) =>
+        prev.map((n) => {
+          // Solo anotar lectura en notas que el usuario no escribió
+          if (n.usuario_correo === user_email) return n;
+          const already = n.readers?.some((r) => r.email === user_email);
+          if (already) return n;
+          return { ...n, readers: [...(n.readers ?? []), { email: user_email, nombre: user_nombre, read_at }] };
+        }),
+      );
     };
 
     const handleTypingStart = ({ userName }: { userName: string }) => {
@@ -69,14 +94,16 @@ export function useTaskNotes(taskId: number | null) {
 
     const handleTypingStop = () => setTypingUser(null);
 
-    socket.on('new_note',     handleNewNote);
-    socket.on('typing_start', handleTypingStart);
-    socket.on('typing_stop',  handleTypingStop);
+    socket.on('new_note',        handleNewNote);
+    socket.on('nota_reads_batch', handleReadsBatch);
+    socket.on('typing_start',    handleTypingStart);
+    socket.on('typing_stop',     handleTypingStop);
 
     return () => {
-      socket.off('new_note',     handleNewNote);
-      socket.off('typing_start', handleTypingStart);
-      socket.off('typing_stop',  handleTypingStop);
+      socket.off('new_note',        handleNewNote);
+      socket.off('nota_reads_batch', handleReadsBatch);
+      socket.off('typing_start',    handleTypingStart);
+      socket.off('typing_stop',     handleTypingStop);
       socket.emit('leave_task', taskId);
     };
   }, [socket, taskId, user?.nombre]);

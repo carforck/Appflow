@@ -4,7 +4,7 @@ const {
   getTareasRevision, crearTareaRevision, actualizarRevision, aprobarRevision, rechazarRevision,
   updateTask, updateTaskStatus,
 } = require('../controllers/taskController');
-const { getNotas, addNota, getNotasResumen } = require('../controllers/notesController');
+const { getNotas, addNota, getNotasResumen, batchMarkRead } = require('../controllers/notesController');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 
 const router = Router();
@@ -23,8 +23,9 @@ router.patch('/:id/status',    authMiddleware, updateTaskStatus);
 router.get('/notas-resumen',   authMiddleware, getNotasResumen);
 
 // Chat de notas por tarea — cualquier usuario autenticado (RBAC en el controller)
-router.get('/:id/notas',       authMiddleware, getNotas);
-router.post('/:id/notas',      authMiddleware, addNota);
+router.get('/:id/notas',              authMiddleware, getNotas);
+router.post('/:id/notas',             authMiddleware, addNota);
+router.post('/:id/notas/read-batch',  authMiddleware, batchMarkRead);
 
 // Flujo de revisión — solo admin / superadmin
 router.get('/revision',        authMiddleware, requireRole('admin', 'superadmin'), getTareasRevision);

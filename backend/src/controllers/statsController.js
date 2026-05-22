@@ -32,7 +32,7 @@ async function getDashboardStats(req, res) {
 
     if (project_id) { conditions.push('t.id_proyecto = ?');      params.push(project_id); }
     if (prioridad)  { conditions.push('t.prioridad = ?');         params.push(prioridad); }
-    if (date_from)  { conditions.push('t.fecha_entrega >= ?');    params.push(date_from); }
+    if (date_from)  { conditions.push('t.fecha_inicio >= ?');     params.push(date_from); }
     if (date_to)    { conditions.push('t.fecha_entrega <= ?');    params.push(date_to); }
     if (empresa)     { conditions.push('p.empresa = ?');      params.push(empresa); }
     if (financiador) { conditions.push('p.financiador = ?'); params.push(financiador); }

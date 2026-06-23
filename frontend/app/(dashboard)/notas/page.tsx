@@ -8,6 +8,7 @@ import { useTaskNotes, TaskNota } from '@/hooks/useTaskNotes';
 import { useNotasUnread } from '@/hooks/useNotasUnread';
 import { useNotasResumen, NotaResumen } from '@/hooks/useNotasResumen';
 import { useSocket } from '@/hooks/useSocket';
+import TaskModal from '@/components/TaskModal';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function formatTs(ts: string) {
@@ -79,11 +80,13 @@ function ChatListItem({ item, isSelected, isAdmin, onClick }: {
 }
 
 // ── Chat panel ─────────────────────────────────────────────────────────────────
-function ChatPanel({ task, userEmail, onNoteSent, clearForTask }: {
+function ChatPanel({ task, userEmail, isAdmin, onNoteSent, clearForTask, onEditTask }: {
   task:         TaskWithMeta;
   userEmail:    string;
+  isAdmin:      boolean;
   onNoteSent:   () => void;
   clearForTask: (id: number) => Promise<void>;
+  onEditTask:   (task: TaskWithMeta) => void;
 }) {
   const socket = useSocket();
   const { notas, loading, sending, sendNota, bottomRef, typingUser, sendTyping } = useTaskNotes(task.id);
@@ -124,9 +127,33 @@ function ChatPanel({ task, userEmail, onNoteSent, clearForTask }: {
 
   return (
     <>
-      <div className="px-4 py-3 border-b border-slate-200/60 dark:border-slate-700/60 shrink-0">
-        <p className="text-xs font-bold text-slate-800 dark:text-white line-clamp-1">{task.tarea_descripcion}</p>
-        <p className="text-[10px] text-slate-400">{task.nombre_proyecto} · {task.responsable_nombre}</p>
+      <div className="px-4 py-3 border-b border-slate-200/60 dark:border-slate-700/60 shrink-0 flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          {isAdmin ? (
+            <button
+              onClick={() => onEditTask(task)}
+              title="Editar tarea"
+              className="text-xs font-bold text-left text-slate-800 dark:text-white line-clamp-2 hover:text-alzak-blue dark:hover:text-alzak-gold hover:underline underline-offset-2 transition-colors w-full"
+            >
+              {task.tarea_descripcion}
+            </button>
+          ) : (
+            <p className="text-xs font-bold text-slate-800 dark:text-white line-clamp-2">{task.tarea_descripcion}</p>
+          )}
+          <p className="text-[10px] text-slate-400 mt-0.5">{task.nombre_proyecto} · {task.responsable_nombre}</p>
+        </div>
+        {isAdmin && (
+          <button
+            onClick={() => onEditTask(task)}
+            title="Editar tarea"
+            className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-alzak-blue dark:hover:text-alzak-gold hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+            aria-label="Editar tarea"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto kanban-scroll px-4 py-4 space-y-3">
@@ -238,6 +265,7 @@ function NotasContent() {
   const { resumen, loading: loadingResumen, refreshResumen } = useNotasResumen();
 
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+  const [editingTask,    setEditingTask]    = useState<TaskWithMeta | null>(null);
 
   // Guard: evitar loop infinito si el store no devuelve la tarea (e.g. >500 tasks)
   const refreshingRef = useRef(false);
@@ -296,6 +324,7 @@ function NotasContent() {
   const totalUnread  = unreadItems.reduce((s, c) => s + c.unread, 0);
 
   return (
+    <>
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
@@ -355,7 +384,7 @@ function NotasContent() {
         {/* Panel de chat */}
         <div className="lg:col-span-2 glass rounded-[20px] border border-slate-200/60 dark:border-slate-700/60 flex flex-col overflow-hidden" style={{ background: 'var(--sidebar-bg)' }}>
           {selectedTask && user ? (
-            <ChatPanel task={selectedTask} userEmail={user.email} onNoteSent={refreshResumen} clearForTask={clearForTask} />
+            <ChatPanel task={selectedTask} userEmail={user.email} isAdmin={isAdmin} onNoteSent={refreshResumen} clearForTask={clearForTask} onEditTask={setEditingTask} />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-2">
               <svg className="w-12 h-12 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -372,6 +401,11 @@ function NotasContent() {
         </div>
       </div>
     </div>
+
+    {isAdmin && (
+      <TaskModal task={editingTask} onClose={() => setEditingTask(null)} />
+    )}
+    </>
   );
 }
 

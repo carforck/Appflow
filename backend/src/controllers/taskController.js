@@ -478,6 +478,27 @@ async function updateTask(req, res) {
       ...(estado_tarea       ? { status: estado_tarea }: {}),
     });
 
+    // Notificar al nuevo responsable si cambió
+    if (responsable_correo && responsable_correo !== prev.responsable_correo) {
+      const [[projRow]] = await pool.query(
+        `SELECT COALESCE(p.nombre_proyecto, t.id_proyecto) AS nombre_proyecto
+         FROM tasks t LEFT JOIN projects p ON t.id_proyecto = p.id_proyecto
+         WHERE t.id = ?`, [id]
+      );
+      const proyNombre = projRow?.nombre_proyecto ?? '';
+      pool.query(
+        `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
+         VALUES ('asignacion', 'Tarea asignada', ?, ?, ?)`,
+        [`Se te ha asignado la tarea en el Proyecto "${proyNombre}"`, Number(id), responsable_correo]
+      ).then(() => emitNotifAlert(responsable_correo, {
+        tipo:    'asignacion',
+        id_tarea: Number(id),
+        titulo:  'Tarea asignada',
+        preview: (tarea_descripcion ?? prev.tarea_descripcion ?? '').slice(0, 100),
+        autor:   req.user.nombre ?? req.user.email,
+      })).catch((e) => console.warn(`⚠️ Notif reasignación #${id}:`, e.message));
+    }
+
     // Calcular diff y notificar al responsable
     const DIFF_FIELDS = ['tarea_descripcion', 'prioridad', 'responsable_nombre', 'fecha_inicio', 'fecha_entrega', 'id_proyecto'];
     const incoming    = { tarea_descripcion, prioridad, responsable_nombre, fecha_inicio, fecha_entrega, id_proyecto };
@@ -490,13 +511,39 @@ async function updateTask(req, res) {
     }
     const destCorreo = responsable_correo ?? prev.responsable_correo;
     if (Object.keys(changes).length > 0 && destCorreo) {
+      const adminNombre = req.user?.nombre ?? req.user?.email;
+      const LABELS = {
+        tarea_descripcion: 'Descripción',
+        prioridad:         'Prioridad',
+        responsable_nombre:'Responsable',
+        fecha_inicio:      'Fecha inicio',
+        fecha_entrega:     'Fecha entrega',
+        id_proyecto:       'Proyecto',
+      };
+      const changeList = Object.keys(changes).map((f) => LABELS[f] || f).join(', ');
+      const msgNotif   = `${adminNombre} actualizó: ${changeList}`;
+
+      // Email al responsable (ya existía)
       sendTaskUpdateEmail({
-        correo:       destCorreo,
-        nombre:       responsable_nombre ?? prev.responsable_nombre,
-        taskId:       id,
+        correo:      destCorreo,
+        nombre:      responsable_nombre ?? prev.responsable_nombre,
+        taskId:      id,
         changes,
-        adminNombre:  req.user?.nombre ?? req.user?.email,
+        adminNombre,
       }).catch((e) => console.error('❌ Email edición tarea:', e.message));
+
+      // Notificación in-app + socket al responsable
+      pool.query(
+        `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
+         VALUES ('actualizacion', 'Tarea actualizada', ?, ?, ?)`,
+        [msgNotif, Number(id), destCorreo]
+      ).then(() => emitNotifAlert(destCorreo, {
+        tipo:    'actualizacion',
+        id_tarea: Number(id),
+        titulo:  'Tarea actualizada',
+        preview: msgNotif,
+        autor:   adminNombre,
+      })).catch((e) => console.warn(`⚠️ Notif actualización #${id}:`, e.message));
     }
 
     console.log(`✅ PATCH /tareas/${id} → campos actualizados`);
@@ -530,11 +577,31 @@ async function updateTaskStatus(req, res) {
       return res.status(404).json({ error: 'Tarea no encontrada o en estado Pendiente Revisión' });
     }
 
-    // Leer fecha_finalizacion para incluirla en el evento socket
+    // Leer fecha_finalizacion + datos para notificación
     let fecha_finalizacion = null;
     if (status === 'Completada') {
-      const [[row]] = await pool.query('SELECT fecha_finalizacion FROM tasks WHERE id = ?', [id]);
+      const [[row]] = await pool.query(
+        `SELECT t.fecha_finalizacion, t.tarea_descripcion, t.responsable_nombre,
+                COALESCE(p.nombre_proyecto, t.id_proyecto) AS nombre_proyecto
+         FROM tasks t
+         LEFT JOIN projects p ON t.id_proyecto = p.id_proyecto
+         WHERE t.id = ?`, [id]
+      );
       fecha_finalizacion = row?.fecha_finalizacion ?? null;
+      if (row) {
+        pool.query(
+          `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
+           VALUES ('completada', 'Tarea completada', ?, ?, NULL)`,
+          [`${row.responsable_nombre || req.user.nombre || 'Usuario'} completó una tarea en "${row.nombre_proyecto}"`, Number(id)]
+        ).then(() => emitNotifAlert(null, {
+          tipo:        'completada',
+          id_tarea:    Number(id),
+          titulo:      'Tarea completada',
+          preview:     row.tarea_descripcion?.slice(0, 100),
+          autor:       req.user.nombre ?? req.user.email,
+          autor_correo: req.user.email,
+        })).catch((e) => console.warn(`⚠️ Notif completada #${id}:`, e.message));
+      }
     }
 
     // Mover la tarjeta en el tablero de todos los clientes conectados

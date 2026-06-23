@@ -6,7 +6,8 @@
  *   - Emite `notification_alert` al destinatario correcto (badge instantáneo)
  */
 const pool              = require('../config/db');
-const { getIo, emitNotifAlert } = require('../config/socket');
+const { getIo, emitNotifAlert, isUserOnline } = require('../config/socket');
+const { queueOfflineNotif } = require('../services/offlineNotifQueue');
 
 async function getNotas(req, res) {
   const { id }          = req.params;
@@ -105,7 +106,7 @@ async function addNota(req, res) {
 
   try {
     const [[task]] = await pool.query(
-      `SELECT id, tarea_descripcion, responsable_correo FROM tasks WHERE id = ?`,
+      `SELECT id, tarea_descripcion, responsable_correo, responsable_nombre FROM tasks WHERE id = ?`,
       [id],
     );
     if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
@@ -139,6 +140,7 @@ async function addNota(req, res) {
     const idTarea  = parseInt(id, 10);
 
     if (role === 'user') {
+      // ── In-app: notificación global a todos los admins ──────────────────────
       const titulo = `Nota en: ${taskDesc}`;
       await pool.query(
         `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
@@ -146,14 +148,56 @@ async function addNota(req, res) {
         [titulo, notifMsg, idTarea],
       );
       emitNotifAlert(null, { tipo: 'nota', id_tarea: idTarea, titulo, preview: notifMsg, autor: autorNombre, autor_correo: email });
-    } else if (task.responsable_correo) {
-      const titulo = `Respuesta del equipo: ${taskDesc}`;
+
+      // ── Email consolidado a todos los admins (siempre se encola — el debounce
+      //    de 3 min evita spam; si el admin lo leyó in-app antes, no hay perjuicio)
+      pool.query(
+        `SELECT email, nombre_complete AS nombre FROM users WHERE role IN ('admin', 'superadmin') AND activo = 1`
+      ).then(([admins]) => {
+        for (const admin of admins) {
+          if (admin.email !== email) {
+            queueOfflineNotif({
+              taskId:         idTarea,
+              taskDesc:       task.tarea_descripcion,
+              recipientEmail: admin.email,
+              recipientName:  admin.nombre || admin.email,
+              autorNombre,
+              mensaje:        mensaje.trim(),
+            });
+          }
+        }
+      }).catch((e) => console.error('❌ offline queue admins:', e.message));
+
+    } else {
+      // ── Admin escribe: notificar al responsable (si existe) ─────────────────
+      if (task.responsable_correo) {
+        const titulo = `Respuesta del equipo: ${taskDesc}`;
+        await pool.query(
+          `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
+           VALUES ('nota', ?, ?, ?, ?)`,
+          [titulo, notifMsg, idTarea, task.responsable_correo],
+        );
+        emitNotifAlert(task.responsable_correo, { tipo: 'nota', id_tarea: idTarea, titulo, preview: notifMsg, autor: autorNombre, autor_correo: email });
+
+        // Email siempre encolado — debounce 3 min actúa como grace period
+        queueOfflineNotif({
+          taskId:         idTarea,
+          taskDesc:       task.tarea_descripcion,
+          recipientEmail: task.responsable_correo,
+          recipientName:  task.responsable_nombre || task.responsable_correo,
+          autorNombre,
+          mensaje:        mensaje.trim(),
+        });
+      }
+
+      // ── Admin escribe: también notificar a otros admins in-app ──────────────
+      const tituloAdmin = `Nota en: ${taskDesc}`;
       await pool.query(
         `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
-         VALUES ('nota', ?, ?, ?, ?)`,
-        [titulo, notifMsg, idTarea, task.responsable_correo],
+         VALUES ('nota', ?, ?, ?, NULL)`,
+        [tituloAdmin, notifMsg, idTarea],
       );
-      emitNotifAlert(task.responsable_correo, { tipo: 'nota', id_tarea: idTarea, titulo, preview: notifMsg, autor: autorNombre, autor_correo: email });
+      emitNotifAlert(null, { tipo: 'nota', id_tarea: idTarea, titulo: tituloAdmin, preview: notifMsg, autor: autorNombre, autor_correo: email });
     }
 
     res.status(201).json({ nota });

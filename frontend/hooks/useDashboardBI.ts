@@ -236,29 +236,65 @@ export function useDashboardBI() {
   }
 
   function exportCSV(type: 'vencidas' | 'carga') {
-    let rows: string[];
-    if (type === 'vencidas') {
-      rows = [
-        ['ID', 'Proyecto', 'Descripción', 'Responsable', 'Prioridad', 'Fecha Entrega', 'Días Vencida'].join(','),
-        ...data.tareas_vencidas.map((t) =>
-          [t.id, t.id_proyecto, `"${t.tarea_descripcion}"`, `"${t.responsable_nombre}"`,
-           t.prioridad, t.fecha_entrega, t.dias_vencida].join(',')
-        ),
-      ];
-    } else {
-      rows = [
-        ['Responsable', 'Tareas Vigentes', 'Vencidas Activas'].join(','),
-        ...data.cargaLaboral.map((c) =>
-          [`"${c.nombre}"`, c.vigentes, c.vencidas_activas].join(',')
-        ),
-      ];
-    }
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = `alzak-${type}-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    import('xlsx').then((XLSX) => {
+      const fecha = new Date().toISOString().slice(0, 10);
+      const wb    = XLSX.utils.book_new();
+
+      if (type === 'carga') {
+        // Hoja 1 — Resumen de carga laboral
+        const resumenRows = [
+          ['Responsable', 'Tareas Vigentes', 'Vencidas Activas', '% Vencidas'],
+          ...data.cargaLaboral
+            .sort((a, b) => b.vigentes - a.vigentes)
+            .map((c) => [
+              c.nombre,
+              c.vigentes,
+              c.vencidas_activas,
+              c.vigentes > 0 ? `${Math.round((c.vencidas_activas / c.vigentes) * 100)}%` : '0%',
+            ]),
+        ];
+        const wsResumen = XLSX.utils.aoa_to_sheet(resumenRows);
+        wsResumen['!cols'] = [{ wch: 30 }, { wch: 16 }, { wch: 16 }, { wch: 12 }];
+        XLSX.utils.book_append_sheet(wb, wsResumen, 'Carga Laboral');
+
+        // Hoja 2 — Detalle de tareas vencidas
+        const vencidasRows = [
+          ['Responsable', 'Proyecto', 'Descripción de tarea', 'Prioridad', 'Fecha entrega', 'Días vencida', 'Estado'],
+          ...data.tareas_vencidas
+            .sort((a, b) => b.dias_vencida - a.dias_vencida)
+            .map((t) => [
+              t.responsable_nombre,
+              t.nombre_proyecto,
+              t.tarea_descripcion,
+              t.prioridad,
+              t.fecha_entrega,
+              t.dias_vencida,
+              t.status,
+            ]),
+        ];
+        const wsVencidas = XLSX.utils.aoa_to_sheet(vencidasRows);
+        wsVencidas['!cols'] = [{ wch: 28 }, { wch: 35 }, { wch: 55 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 16 }];
+        XLSX.utils.book_append_sheet(wb, wsVencidas, 'Tareas Vencidas');
+
+        XLSX.writeFile(wb, `alzak-carga-laboral-${fecha}.xlsx`);
+
+      } else {
+        // Export de tareas vencidas standalone
+        const rows = [
+          ['ID', 'Proyecto', 'Descripción de tarea', 'Responsable', 'Prioridad', 'Fecha entrega', 'Días vencida', 'Estado'],
+          ...data.tareas_vencidas
+            .sort((a, b) => b.dias_vencida - a.dias_vencida)
+            .map((t) => [
+              t.id, t.nombre_proyecto, t.tarea_descripcion, t.responsable_nombre,
+              t.prioridad, t.fecha_entrega, t.dias_vencida, t.status,
+            ]),
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        ws['!cols'] = [{ wch: 6 }, { wch: 35 }, { wch: 55 }, { wch: 28 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 16 }];
+        XLSX.utils.book_append_sheet(wb, ws, 'Tareas Vencidas');
+        XLSX.writeFile(wb, `alzak-tareas-vencidas-${fecha}.xlsx`);
+      }
+    });
   }
 
   // Reporte personal PDF (usuario) — captura las 4 graficas + tabla de tareas

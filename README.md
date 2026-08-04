@@ -1,6 +1,6 @@
 # Alzak Flow — Manual de Vuelo
 
-> **v7.0** — Guía técnica completa para el equipo de desarrollo.
+> **v7.1** — Guía técnica completa para el equipo de desarrollo.
 > Cubre stack, arquitectura, endpoints, socket, base de datos, despliegue y flujos de negocio.
 
 ---
@@ -21,7 +21,7 @@
 12. [Sistema de roles RBAC](#12-sistema-de-roles-rbac)
 13. [Flujo de procesamiento de minutas (IA)](#13-flujo-de-procesamiento-de-minutas-ia)
 14. [Flujo de revisión y aprobación](#14-flujo-de-revisión-y-aprobación)
-15. [Sistema de correos y recordatorios](#15-sistema-de-correos-y-recordatorios)
+15. [Correos, notificaciones y jobs programados](#15-correos-notificaciones-y-jobs-programados)
 16. [Docker — Despliegue](#16-docker--despliegue)
 17. [Git — Repositorios y deploy](#17-git--repositorios-y-deploy)
 18. [Dev Bypass — credenciales de prueba](#18-dev-bypass--credenciales-de-prueba)
@@ -42,8 +42,13 @@
 | **Chat de notas** | Comunicación por tarea, bidireccional en tiempo real con indicador "está escribiendo" |
 | **Notificaciones** | Centro de notificaciones RBAC con Web Audio, polling + WebSocket. Estado de lectura independiente por admin (junction table) |
 | **Recordatorios diarios** | Cron 8:00 AM (Bogotá) — envía correo HTML a responsables con tareas vencidas y próximas a vencer (≤ 3 días) |
-| **Dashboard BI** | KPIs, gráficas Recharts, heatmap de actividad |
+| **Dashboard BI** | KPIs, gráficas Recharts, heatmap de actividad, export Excel de carga laboral (2 hojas) |
 | **Proyectos / Usuarios** | CRUD completo con control de acceso por rol |
+| **Cambio de credenciales** | Admin asigna contraseña a cualquier cuenta → force-logout + correo con la clave (`must_change_password`) |
+| **Read receipts** | Indicador "visto por 👁" en notas de tarea (junction `nota_reads`) |
+| **Notif. offline por email** | Si un participante del chat está desconectado, sus mensajes se consolidan y salen por correo (debounce 3 min) |
+| **Diagnóstico técnico** | Cron 8:00 AM — correo al superadmin con métricas de runtime, DB, email, actividad y usuarios |
+| **Limpieza automática** | Cron dominical 3:00 AM — purga notificaciones y emails obsoletos |
 
 ---
 
@@ -181,10 +186,14 @@ alzak-flow/
 │       │   ├── statsRoutes.js
 │       │   └── logsRoutes.js
 │       ├── services/
-│       │   ├── emailService.js     ← Cola + consolidación + envío nodemailer
-│       │   └── reminderService.js  ← Recordatorio diario: vencidas + próximas (≤ 3 días)
+│       │   ├── emailService.js         ← Cola + consolidación + envío nodemailer (7 tipos de correo)
+│       │   ├── reminderService.js      ← Recordatorio diario: vencidas + próximas (≤ 3 días)
+│       │   ├── offlineNotifQueue.js    ← Cola con debounce para chat → email offline
+│       │   └── systemStatusService.js  ← Recopila métricas y arma el diagnóstico técnico
 │       ├── jobs/
-│       │   └── dailyReminder.js    ← node-cron 8:00 AM (America/Bogota)
+│       │   ├── dailyReminder.js        ← node-cron 8:00 AM — recordatorio a responsables
+│       │   ├── systemStatusJob.js      ← node-cron 8:00 AM — diagnóstico al superadmin
+│       │   └── cleanupJob.js           ← node-cron Dom 3:00 AM — limpieza de datos obsoletos
 │       └── utils/
 │           └── logActivity.js    ← Helper audit log
 │
@@ -504,7 +513,12 @@ SELECT * FROM tasks WHERE id_meeting IS NULL;
 
 | Método | Ruta | Rol | Descripción |
 |--------|------|-----|-------------|
-| GET | `/users` | admin+ | Lista todos los usuarios con campo `activo` |
+| GET | `/users` | admin+ | Lista usuarios con `activo` y `must_change_password` |
+| POST | `/users` | admin+ | Crear usuario (contraseña temporal `Alzak2026*`, `must_change_password=1`). Solo superadmin puede crear superadmin |
+| GET | `/users/me/activity` | Todos | Últimas 15 acciones del usuario autenticado |
+| PATCH | `/users/me/password` | Todos | El propio usuario cambia su contraseña (valida la actual) |
+| PATCH | `/users/:correo/password` | admin+ | **Admin asigna contraseña** a una cuenta → bcrypt, force-logout y correo con la clave. Un admin no puede tocar a un superadmin |
+| PATCH | `/users/:correo` | admin+ | Editar nombre/rol/activo. Un admin no puede modificar a un superadmin ni auto-desactivarse |
 | DELETE | `/users/:correo` | admin+ | Eliminar usuario. Emite `user_force_logout` |
 | PATCH | `/users/:correo/rol` | superadmin | Cambiar rol. Emite `user_role_changed` |
 | PATCH | `/users/:correo/activo` | admin+ | Toggle activo/inactivo. Si inhabilita → emite `user_force_logout` |
@@ -576,8 +590,11 @@ SELECT * FROM tasks WHERE id_meeting IS NULL;
 | `task_created` | `alzak_global` | — | Refresca el board y la cola de revisión |
 | `notification_alert` | `admins` o `user_{email}` | `{ tipo, id_tarea?, titulo?, preview?, autor? }` | Actualiza badge + reproduce tono Web Audio. Las notificaciones globales solo van al room `admins` (no a todos los usuarios) |
 | `new_note` | `task_{id}` | `TaskNota` completo | Aparece burbuja nueva en el chat |
+| `nota_reads_batch` | `task_{id}` | `{ taskId, reads: [{ id_nota, user_email, ... }] }` | Actualiza indicador "visto por 👁" (read receipts) |
 | `typing_start` | `task_{id}` (excepto emisor) | `{ taskId, userName }` | Muestra "X está escribiendo…" |
 | `typing_stop` | `task_{id}` (excepto emisor) | `{ taskId }` | Oculta indicador de escritura |
+| `project_changed` | `alzak_global` | — | Refresca listas de proyectos (crear/editar/eliminar) |
+| `new_activity_log` | `superadmins` | registro de actividad | Alimenta la vista de Logs en vivo |
 | `user_force_logout` | `user_{email}` | — | Cierra sesión y redirige a `/login` |
 | `user_role_changed` | `user_{email}` | `{ email, role }` | Actualiza rol en AuthContext sin re-login |
 | `active_users_update` | `superadmins` | `[{ email, nombre, role, connectedAt }]` | Actualiza lista de usuarios activos en tiempo real |
@@ -770,7 +787,7 @@ MATRIZ DE REVISIÓN (/revision)
 
 ---
 
-## 15. Sistema de correos y recordatorios
+## 15. Correos, notificaciones y jobs programados
 
 ### 15.1 Correos de aprobación (consolidados)
 
@@ -824,6 +841,67 @@ Cada día a las 8:00 AM:
 ```
 
 **Modo dry-run:** igual que en 15.1 — si SMTP no está configurado, imprime los correos que se enviarían sin lanzar error.
+
+---
+
+### 15.3 Catálogo de correos (`src/services/emailService.js`)
+
+Todos usan el mismo `buildTransport()` (Gmail SMTP, TLS verificado salvo `SMTP_TLS_INSECURE=true`) y escapan el contenido de usuario con `escapeHtml()` (anti-inyección HTML).
+
+| Función | Se dispara cuando… | Destinatario |
+|---------|--------------------|--------------|
+| `sendConsolidatedEmails` | Se aprueban tareas (debounce 10s) | Responsable de las tareas |
+| `sendPasswordResetEmail` | El usuario pide OTP de recuperación | Quien lo solicita |
+| `sendTaskUpdateEmail` | Un admin edita una tarea ya asignada | Responsable de la tarea |
+| `sendNoteReplyEmail` | El equipo responde una nota | Responsable de la tarea |
+| `sendOfflineChatEmail` | Mensajes de chat a un participante **offline** (ver 15.4) | Participante desconectado |
+| `sendCredentialsEmail` | Un admin **cambia las credenciales** de una cuenta | Usuario afectado |
+
+### 15.4 Notificaciones offline por email (`src/services/offlineNotifQueue.js`)
+
+Cuando alguien escribe en el chat de una tarea, el servidor comprueba con `isUserOnline(email)` (Socket.io) si cada participante está conectado. Para los **desconectados**, encola el mensaje con **debounce de 3 min** (`OFFLINE_NOTIF_DEBOUNCE_MS`):
+
+```
+queueOfflineNotif({ taskId, recipientEmail, mensaje, ... })
+  clave de cola = `${taskId}:${recipientEmail}`
+  - Si ya hay entrada → reinicia el timer y ACUMULA el mensaje
+  - Al expirar el timer → flush() → sendOfflineChatEmail() con TODOS los mensajes
+```
+> La cola vive en memoria: si el proceso reinicia dentro de la ventana de 3 min, los mensajes pendientes de esa ventana no se envían por correo (sí quedaron en la DB del chat).
+
+### 15.5 Jobs programados (node-cron)
+
+Los tres se registran una sola vez en `index.js` al arrancar. Zona horaria: `America/Bogota`.
+
+| Job | Archivo | Cron | Qué hace |
+|-----|---------|------|----------|
+| **Recordatorio diario** | `jobs/dailyReminder.js` → `services/reminderService.js` | `0 8 * * *` (8:00 AM) | Correo a cada responsable con tareas vencidas y próximas a vencer (≤ 3 días) |
+| **Diagnóstico técnico** | `jobs/systemStatusJob.js` → `services/systemStatusService.js` | `0 8 * * *` (8:00 AM) | Correo al superadmin con métricas: runtime Node, OS, latencia/tamaño DB, actividad 24h, email, notificaciones, usuarios. Semáforos ✅/🟡/🔴 |
+| **Limpieza semanal** | `jobs/cleanupJob.js` | `0 3 * * 0` (Dom 3:00 AM) | Purga notif. privadas leídas (>60d), globales (>90d), `notification_reads` huérfanos y `pending_emails` atascados (>24h). También corre una vez al arrancar (+10s) |
+
+### 15.6 Flujo de datos punta a punta — una nota de chat
+
+Cómo se interconectan Socket.io, notificaciones in-app y correo cuando un usuario escribe una nota:
+
+```
+Usuario A escribe una nota en la tarea #42
+        │
+        ▼
+POST /tareas/:id/notas ──> INSERT task_notas
+        │
+        ├──▶ Socket.io: emit 'new_note' → room task_42
+        │         └─ participantes con el chat abierto ven la burbuja al instante
+        │
+        ├──▶ Notificación in-app: INSERT db_notifications
+        │         └─ emit 'notification_alert' → room user_{B} (o 'admins' si es global)
+        │              └─ badge + tono Web Audio en el cliente de B
+        │
+        └──▶ Para cada participante B:  ¿isUserOnline(B)?
+                  ├─ SÍ  → nada más (ya lo vio por socket)
+                  └─ NO  → queueOfflineNotif()  ──(debounce 3 min)──▶  sendOfflineChatEmail(B)
+```
+
+Cuando B vuelve a abrir la tarea, el cliente marca las notas como leídas → `nota_reads` → emit `nota_reads_batch` al room `task_42` → A ve el indicador **"visto por 👁"**.
 
 ---
 
@@ -1007,6 +1085,7 @@ npm run lint    # ESLint
 
 | Versión | Cambios principales |
 |---------|---------------------|
+| **v7.1** | Cambio de credenciales desde el panel admin (`PATCH /users/:correo/password` + `sendCredentialsEmail` + force-logout). Diagnóstico técnico diario y limpieza semanal (crons). Notificaciones offline por email (debounce 3 min). Read receipts "visto por 👁" (`nota_reads`). Export Excel de carga laboral. **Endurecimiento de seguridad:** migraciones `activo`/`must_change_password`, `escapeHtml` en correos, TLS SMTP verificado, guards de RBAC en `updateUser`, secretos fuera del repo. Backup en GitLab interno (`alzak-foundation/alzak-flow`) |
 | **v7.0** | Recordatorio diario cron (8 AM Bogotá) con tareas vencidas y próximas a vencer. Notificaciones independientes por admin: tabla `notification_reads` (junction) — cada admin tiene su propio estado de lectura sin afectar a los demás. Room `admins` en Socket.io para alertas globales. Comboboxes de proyecto con búsqueda en todos los filtros (Dashboard, Lista Maestra, Revisión). Z-index fixes para dropdowns. Tailscale Funnel + Nginx TLS en producción |
 | **v6.0** | Manual de vuelo completo. Matriz de revisión: comboboxes duales (ID+Nombre), scroll completo, solo activos, pill "✏️ Manual", fecha_inicio automática, botón Eliminar todo, modal Agregar tarea, modal confirmación Aprobar todo |
 | **v5.0** | Socket.io tiempo real, identidad visual corporativa (logo WebP), notificaciones completas con Web Audio, tour onboarding Driver.js |

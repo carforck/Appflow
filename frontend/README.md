@@ -1,36 +1,30 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Alzak Flow — Frontend
 
-## Getting Started
+Cliente **Next.js 14 (App Router)** + TypeScript estricto + Tailwind CSS del sistema Alzak Flow.
 
-First, run the development server:
+> 📖 **La documentación técnica completa** (arquitectura, API, Socket.io, base de datos, deploy, flujos de negocio y jobs) está en el **[README raíz del proyecto](../README.md) — "Manual de Vuelo"**.
+> Las convenciones de arquitectura de frontend (átomos/moléculas/páginas, hooks, Zod, a11y) están en **[CLAUDE.md](../CLAUDE.md)**.
+
+## Desarrollo local
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev     # http://localhost:3001
+npm run build   # build + type check
+npm run lint    # ESLint
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Variables de entorno (`.env.local`)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3005      # backend Express + Socket.io
+NEXT_PUBLIC_SOCKET_URL=http://localhost:3005   # misma URL (Socket.io corre en el mismo proceso)
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+En producción apuntan a `https://alzakserver.tail94787f.ts.net`.
 
-## Learn More
+## Repositorios
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Fuente de verdad + deploy:** `carforck/Appflow` (GitHub, root dir `frontend/`) → **Vercel despliega desde aquí**
+- **Backup empresa:** `alzak-foundation/alzak-flow` (GitLab interno)
+- **Este repo** (`asistenteti-star/Appflow2026`) es un **espejo histórico solo-frontend** y NO dispara deploys.

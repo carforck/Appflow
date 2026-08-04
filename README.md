@@ -129,7 +129,7 @@ Login → POST /auth/login → JWT (8h) →
 | Base de datos | MySQL 8 en DigitalOcean |
 | Túnel BD | SSH inverso en contenedor Alpine |
 | Servidor | Docker Compose (3 servicios) |
-| Frontend deploy | Vercel (rama `main` de `asistenteti-star/Appflow2026`) |
+| Frontend deploy | Vercel (rama `master` de `carforck/Appflow`, root dir `frontend/`) |
 | Acceso externo | Tailscale Funnel + Nginx TLS (`alzakserver.tail94787f.ts.net`) |
 
 ---
@@ -882,43 +882,48 @@ docker compose restart api
 
 ## 17. Git — Repositorios y deploy
 
-El proyecto usa **dos repositorios git** con roles distintos:
+El proyecto se respalda en **tres repositorios git** con roles distintos:
 
 | Repo | Remote | Rama | Propósito |
 |------|--------|------|-----------|
-| Raíz (`/alzak-flow/`) | `carforck/Appflow.git` | `master` | Código completo (backend + frontend). Fuente de verdad |
-| Frontend (`/alzak-flow/frontend/`) | `asistenteti-star/Appflow2026.git` | `main` | Solo frontend. **Vercel escucha este repo** |
+| **Raíz** (`/alzak-flow/`) | `carforck/Appflow.git` (GitHub) | `master` | **Fuente de verdad** (backend + frontend). **Vercel despliega desde aquí** (root dir = `frontend/`) |
+| **Backup empresa** (`/alzak-flow/`) | `alzak-foundation/alzak-flow` (GitLab interno) | `master` | Respaldo íntegro en la infraestructura de Alzak (`gitlab.alzakserver.org`, SSH puerto 2222) |
+| **Espejo frontend** (`/alzak-flow/frontend/`) | `asistenteti-star/Appflow2026.git` (GitHub) | `main` | Espejo histórico solo del frontend. **NO dispara deploys** |
 
-### Regla crítica al hacer commits
+> **Aclaración importante (corregida):** Vercel está conectado al repo **raíz `carforck/Appflow`**
+> con *root directory* = `frontend/`. Pushear a `master` de ese repo **es** lo que dispara el deploy.
+> El repo `asistenteti-star/Appflow2026` NO está conectado a Vercel — es solo un espejo.
+
+### Flujo de commit y respaldo
 
 ```bash
-# ── CAMBIOS DE BACKEND ───────────────────────────────────────────
-# Desde la raíz del proyecto
 cd /home/admin-alzak/proyectos/alzak-flow
-git add backend/...
-git commit -m "fix: descripción"
-git push   # → carforck/Appflow.git (master)
 
-# Luego rebuilds Docker:
-cd backend && docker compose up -d --build api
-
-# ── CAMBIOS DE FRONTEND ──────────────────────────────────────────
-# SIEMPRE desde dentro de frontend/ para que Vercel lo reciba
-cd /home/admin-alzak/proyectos/alzak-flow/frontend
-git add components/... hooks/... app/...
+# 1. Commit (backend y/o frontend, todo va al repo raíz)
+git add -A
 git commit -m "feat: descripción"
-git push origin main   # → asistenteti-star/Appflow2026.git → Vercel despliega
 
-# También commitear en el repo raíz para mantenerlo sincronizado:
-cd ..
-git add frontend/...
-git commit -m "feat: descripción"
-git push
+# 2. Push a los repos que respaldan TODO el proyecto
+git push origin master        # → carforck/Appflow  → dispara Vercel (frontend)
+git push gitlab master        # → GitLab interno (backup empresa)
+
+# 3. Si tocaste backend: rebuild Docker
+cd backend && docker compose up -d --build api && cd ..
+
+# 4. (Opcional) sincronizar el espejo solo-frontend
+cd frontend && git add -A && git commit -m "sync" && git push origin main && cd ..
 ```
 
-> **Por qué existen dos repos:** el directorio `frontend/` tiene su propio `.git`
-> apuntando a `asistenteti-star/Appflow2026.git`. Vercel está conectado a ese repo.
-> El repo raíz (`carforck/Appflow`) no dispara deploys en Vercel.
+**Configurar el remote de GitLab interno** (una sola vez; usa token o SSH key registrada):
+
+```bash
+# Vía HTTPS con Personal Access Token (CA interna → sslVerify off en LAN):
+git remote add gitlab https://oauth2:<TOKEN>@gitlab.alzakserver.org/alzak-foundation/alzak-flow.git
+git config http.https://gitlab.alzakserver.org/.sslVerify false
+
+# Vía SSH (puerto 2222, requiere clave registrada en GitLab):
+git remote add gitlab ssh://git@gitlab.alzakserver.org:2222/alzak-foundation/alzak-flow.git
+```
 
 ---
 

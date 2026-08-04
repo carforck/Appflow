@@ -3,10 +3,6 @@
  * Todos los endpoints de la API pasan por aquí.
  */
 
-/**
- * Sube un archivo PDF/DOCX al endpoint /upload/texto y devuelve
- * el texto extraído. Usa multipart/form-data — NO añadir Content-Type manual.
- */
 export async function uploadFileForText(file: File): Promise<string> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('alzak_token') : null;
   const form  = new FormData();
@@ -34,11 +30,6 @@ export function backendBase(): string {
   return 'http://localhost:3005';
 }
 
-/**
- * Fetch autenticado: inyecta el JWT de localStorage en cada petición.
- * Si el servidor responde 401, dispara el evento "alzak:unauthorized"
- * para que AuthContext cierre la sesión automáticamente.
- */
 export async function authFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const token = localStorage.getItem('alzak_token');
   const headers: Record<string, string> = {
@@ -50,7 +41,6 @@ export async function authFetch(path: string, options: RequestInit = {}): Promis
   const res = await fetch(`${backendBase()}${path}`, { ...options, headers });
 
   if (res.status === 401) {
-    // Token expirado o inválido → limpiar sesión
     window.dispatchEvent(new CustomEvent('alzak:unauthorized'));
   }
 

@@ -2,9 +2,10 @@
 
 import type { UserRole } from '@/context/AuthContext';
 import type { MockUser }  from '@/lib/mockData';
-import { UserCard }       from './UserCard';
-import { UserFormModal }  from './UserFormModal';
-import { ROLE_CFG }       from './userConstants';
+import { UserCard }           from './UserCard';
+import { UserFormModal }      from './UserFormModal';
+import { AdminPasswordModal } from './AdminPasswordModal';
+import { ROLE_CFG }           from './userConstants';
 import type { useUsuariosPage } from '@/hooks/useUsuariosPage';
 
 type UsersPanelProps = ReturnType<typeof useUsuariosPage>;
@@ -16,7 +17,8 @@ export function UsersPanel(props: UsersPanelProps) {
     filterRole, setFilterRole,
     filterActivo, setFilterActivo,
     modalUser, setModalUser,
-    handleSave, handleToggleActivo, handleDelete,
+    pwUser, setPwUser,
+    handleSave, handleToggleActivo, handleDelete, handleResetPassword,
   } = props;
 
   const total = stats.total;
@@ -124,6 +126,7 @@ export function UsersPanel(props: UsersPanelProps) {
                 onEdit={() => setModalUser(u)}
                 onToggle={() => handleToggleActivo(u.correo)}
                 onDelete={handleDelete}
+                onResetPassword={() => setPwUser(u)}
               />
             ))}
           </div>
@@ -144,6 +147,16 @@ export function UsersPanel(props: UsersPanelProps) {
           existingEmails={existingEmails}
           onSave={handleSave}
           onClose={() => setModalUser(undefined)}
+        />
+      )}
+
+      {/* Modal de cambio de credenciales */}
+      {pwUser && (
+        <AdminPasswordModal
+          nombre={pwUser.nombre_completo}
+          correo={pwUser.correo}
+          onSave={(data) => handleResetPassword(pwUser.correo, data)}
+          onClose={() => setPwUser(null)}
         />
       )}
     </div>

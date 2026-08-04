@@ -20,7 +20,7 @@ async function login(req, res) {
 
   try {
     const [rows] = await pool.query(
-      'SELECT email, nombre_complete, role, password, activo FROM users WHERE email = ?',
+      'SELECT email, nombre_complete, role, password, activo, must_change_password FROM users WHERE email = ?',
       [correo]
     );
 
@@ -45,6 +45,8 @@ async function login(req, res) {
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
 
+    const mustChange = Boolean(u.must_change_password);
+
     const token = jwt.sign(
       { email: u.email, nombre: u.nombre_complete, role: u.role },
       JWT_SECRET,
@@ -59,7 +61,7 @@ async function login(req, res) {
     });
     res.json({
       token,
-      user: { email: u.email, nombre: u.nombre_complete, role: u.role },
+      user: { email: u.email, nombre: u.nombre_complete, role: u.role, mustChangePassword: mustChange },
     });
   } catch (err) {
     console.error(`❌ Error en login (${correo}):`, err.message);

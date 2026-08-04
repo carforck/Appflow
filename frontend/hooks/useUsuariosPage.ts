@@ -31,6 +31,8 @@ export function useUsuariosPage() {
   const [filterActivo, setFilterActivo] = useState<'Todos' | 'Activos' | 'Inactivos'>('Todos');
   // undefined = cerrado, null = crear nuevo, MockUser = editar
   const [modalUser, setModalUser] = useState<MockUser | null | undefined>(undefined);
+  // Usuario cuyo cambio de credenciales se está gestionando (null = cerrado)
+  const [pwUser, setPwUser] = useState<MockUser | null>(null);
 
   const canEdit = user?.role === 'superadmin' || user?.role === 'admin';
 
@@ -126,6 +128,24 @@ export function useUsuariosPage() {
     }
   };
 
+  const handleResetPassword = async (correo: string, data: { newPassword: string; requireChange: boolean }) => {
+    try {
+      const res = await authFetch(`/users/${encodeURIComponent(correo)}/password`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        addToast(d.error ?? 'Error al cambiar credenciales', 'error');
+        return;
+      }
+      addToast(`Credenciales actualizadas. Se notificó a ${correo} por correo.`, 'success');
+      setPwUser(null);
+    } catch {
+      addToast('Error de conexión al cambiar credenciales', 'error');
+    }
+  };
+
   const handleDelete = async (correo: string) => {
     try {
       const res = await authFetch(`/users/${encodeURIComponent(correo)}`, { method: 'DELETE' });
@@ -154,7 +174,8 @@ export function useUsuariosPage() {
     filterActivo, setFilterActivo,
     // Modal
     modalUser, setModalUser,
+    pwUser, setPwUser,
     // Handlers
-    handleSave, handleToggleActivo, handleDelete,
+    handleSave, handleToggleActivo, handleDelete, handleResetPassword,
   };
 }

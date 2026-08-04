@@ -1,6 +1,6 @@
 # Alzak Flow — Manual de Vuelo
 
-> **v6.0** — Guía técnica completa para el equipo de desarrollo.
+> **v7.0** — Guía técnica completa para el equipo de desarrollo.
 > Cubre stack, arquitectura, endpoints, socket, base de datos, despliegue y flujos de negocio.
 
 ---
@@ -21,7 +21,7 @@
 12. [Sistema de roles RBAC](#12-sistema-de-roles-rbac)
 13. [Flujo de procesamiento de minutas (IA)](#13-flujo-de-procesamiento-de-minutas-ia)
 14. [Flujo de revisión y aprobación](#14-flujo-de-revisión-y-aprobación)
-15. [Sistema de correos consolidados](#15-sistema-de-correos-consolidados)
+15. [Sistema de correos y recordatorios](#15-sistema-de-correos-y-recordatorios)
 16. [Docker — Despliegue](#16-docker--despliegue)
 17. [Git — Repositorios y deploy](#17-git--repositorios-y-deploy)
 18. [Dev Bypass — credenciales de prueba](#18-dev-bypass--credenciales-de-prueba)
@@ -40,7 +40,8 @@
 | **Matriz de Revisión** | Cola donde admins revisan, editan y aprueban tareas antes de enviarlas al equipo |
 | **Kanban** | Tablero de trabajo por estados (Pendiente → En Proceso → Completada) con drag visual |
 | **Chat de notas** | Comunicación por tarea, bidireccional en tiempo real con indicador "está escribiendo" |
-| **Notificaciones** | Centro de notificaciones RBAC con Web Audio, polling + WebSocket |
+| **Notificaciones** | Centro de notificaciones RBAC con Web Audio, polling + WebSocket. Estado de lectura independiente por admin (junction table) |
+| **Recordatorios diarios** | Cron 8:00 AM (Bogotá) — envía correo HTML a responsables con tareas vencidas y próximas a vencer (≤ 3 días) |
 | **Dashboard BI** | KPIs, gráficas Recharts, heatmap de actividad |
 | **Proyectos / Usuarios** | CRUD completo con control de acceso por rol |
 
@@ -55,8 +56,13 @@
 └────────────────────────┬───────────────────────────────────-┘
                          │ REST + WebSocket (Socket.io)
 ┌────────────────────────▼────────────────────────────────────┐
+│  NGINX (puerto 443 — TLS cert Tailscale / Let's Encrypt)    │
+│  proxy_pass → localhost:3005 + WebSocket upgrade            │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────────┐
 │  API (Docker — Express + Socket.io — puerto 3005)           │
-│  Red: host (Tailscale / Cloudflare tunnel)                  │
+│  network_mode: host · Tailscale Funnel → acceso público     │
 └────────────────────────┬────────────────────────────────────┘
                          │ MySQL2 pool (10 conn)
 ┌────────────────────────▼────────────────────────────────────┐
@@ -64,6 +70,11 @@
 │  localhost:3306 → SSH → DigitalOcean MySQL 8                │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**Acceso externo (Tailscale Funnel):**
+- `tailscale funnel --bg --https=443 http://localhost:3005` expone el backend públicamente en `https://alzakserver.tail94787f.ts.net` sin requerir cliente Tailscale en los navegadores de los usuarios.
+- El cert TLS proviene de Let's Encrypt vía `tailscale cert alzakserver.tail94787f.ts.net` y es confiable en todos los browsers.
+- Nginx actúa como reverse proxy: termina TLS, setea headers `X-Real-IP` y gestiona el upgrade de WebSocket.
 
 **Flujo de autenticación:**
 ```
@@ -109,6 +120,7 @@ Login → POST /auth/login → JWT (8h) →
 | mammoth | 1.12.0 | DOCX → texto |
 | pdf-parse | 1.1.1 | PDF → texto |
 | nodemon | 3.1.14 | Watch mode desarrollo |
+| node-cron | — | Cron jobs (recordatorio diario 8 AM) |
 
 ### Infraestructura
 
@@ -118,7 +130,7 @@ Login → POST /auth/login → JWT (8h) →
 | Túnel BD | SSH inverso en contenedor Alpine |
 | Servidor | Docker Compose (3 servicios) |
 | Frontend deploy | Vercel (rama `main` de `asistenteti-star/Appflow2026`) |
-| Acceso externo | Tailscale (`alzakserver.tail94787f.ts.net`) |
+| Acceso externo | Tailscale Funnel + Nginx TLS (`alzakserver.tail94787f.ts.net`) |
 
 ---
 
@@ -169,7 +181,10 @@ alzak-flow/
 │       │   ├── statsRoutes.js
 │       │   └── logsRoutes.js
 │       ├── services/
-│       │   └── emailService.js   ← Cola + consolidación + envío nodemailer
+│       │   ├── emailService.js     ← Cola + consolidación + envío nodemailer
+│       │   └── reminderService.js  ← Recordatorio diario: vencidas + próximas (≤ 3 días)
+│       ├── jobs/
+│       │   └── dailyReminder.js    ← node-cron 8:00 AM (America/Bogota)
 │       └── utils/
 │           └── logActivity.js    ← Helper audit log
 │
@@ -293,7 +308,7 @@ NEXT_PUBLIC_SOCKET_URL=https://alzakserver.tail94787f.ts.net
 Al arrancar el backend, `src/config/migrate.js` ejecuta automáticamente:
 1. Verifica existencia de tablas core (`users`, `projects`, `meetings`, `tasks`)
 2. Añade columnas faltantes con `ALTER TABLE IF NOT EXISTS`
-3. Crea tablas de soporte si no existen
+3. Crea tablas de soporte si no existen: `pending_emails`, `db_notifications`, `task_notas`, `activity_logs`, `password_resets`, `notification_reads`
 4. **No bloquea el arranque** — solo loguea errores
 
 ### Esquema completo
@@ -375,6 +390,21 @@ CREATE TABLE db_notifications (
     -- email = notificación privada RBAC
   created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ── LECTURA DE NOTIFICACIONES GLOBALES (per-usuario) ───────────
+-- Estado de lectura independiente para cada admin en notificaciones
+-- con destinatario_correo IS NULL (broadcast). Sin esta tabla, marcar
+-- una notificación como leída afectaría el badge de todos los admins.
+CREATE TABLE notification_reads (
+  id_notification  INT          NOT NULL,
+  user_email       VARCHAR(255) NOT NULL,
+  read_at          DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id_notification, user_email),
+  INDEX idx_user (user_email)
+);
+-- Nota: leido en db_notifications solo aplica a notificaciones privadas.
+-- Para globales (destinatario_correo IS NULL), el estado leído = existe
+-- una fila en notification_reads con ese (id_notification, user_email).
 
 -- ── COLA DE EMAILS ───────────────────────────────────────────────
 CREATE TABLE pending_emails (
@@ -535,6 +565,7 @@ SELECT * FROM tasks WHERE id_meeting IS NULL;
 | `alzak_global` | Todos los autenticados | Al conectar |
 | `user_{email}` | Solo ese usuario | Al conectar (privado) |
 | `task_{id}` | Usuarios en ese chat | Evento `join_task` |
+| `admins` | admin + superadmin | Al conectar |
 | `superadmins` | Solo superadmins | Al conectar |
 
 ### 8.2 Eventos servidor → cliente
@@ -543,7 +574,7 @@ SELECT * FROM tasks WHERE id_meeting IS NULL;
 |--------|-------------|---------|---------------------|
 | `task_updated` | `alzak_global` | `{ id, status?, prioridad?, fecha_entrega?, responsable_nombre?, responsable_correo? }` | Mueve/actualiza tarjeta Kanban en tiempo real |
 | `task_created` | `alzak_global` | — | Refresca el board y la cola de revisión |
-| `notification_alert` | `alzak_global` o `user_{email}` | `{ tipo, id_tarea?, titulo?, preview?, autor? }` | Actualiza badge + reproduce tono Web Audio |
+| `notification_alert` | `admins` o `user_{email}` | `{ tipo, id_tarea?, titulo?, preview?, autor? }` | Actualiza badge + reproduce tono Web Audio. Las notificaciones globales solo van al room `admins` (no a todos los usuarios) |
 | `new_note` | `task_{id}` | `TaskNota` completo | Aparece burbuja nueva en el chat |
 | `typing_start` | `task_{id}` (excepto emisor) | `{ taskId, userName }` | Muestra "X está escribiendo…" |
 | `typing_stop` | `task_{id}` (excepto emisor) | `{ taskId }` | Oculta indicador de escritura |
@@ -739,7 +770,9 @@ MATRIZ DE REVISIÓN (/revision)
 
 ---
 
-## 15. Sistema de correos consolidados
+## 15. Sistema de correos y recordatorios
+
+### 15.1 Correos de aprobación (consolidados)
 
 **Diseño:** un solo correo HTML por persona, sin importar cuántas tareas se aprueben.
 
@@ -763,6 +796,34 @@ Después de 10s sin más aprobaciones:
 - 10 tareas aprobadas, pausa > 10s, 5 más → Carlos recibe **2 correos**
 
 **Modo dry-run:** si `SMTP_HOST/SMTP_USER/SMTP_PASS` no están en `.env`, los correos se loguean en consola sin error.
+
+---
+
+### 15.2 Recordatorio diario de tareas (cron)
+
+**Horario:** 8:00 AM hora Colombia (`America/Bogota`, UTC-5), todos los días.  
+**Archivo:** `src/jobs/dailyReminder.js` → `src/services/reminderService.js`  
+**Arranque:** `scheduleDailyReminder()` se llama una sola vez en `index.js` al iniciar el servidor.
+
+```
+Cada día a las 8:00 AM:
+  sendDailyReminders()
+    1. Consulta tasks con estado ≠ 'Completada' y responsable_correo NOT NULL
+       - Tareas vencidas:          fecha_entrega < HOY
+       - Próximas a vencer (≤ 3d): fecha_entrega BETWEEN HOY y HOY+3
+
+    2. GROUP BY responsable_correo
+
+    3. Para cada responsable con tareas en alguna categoría:
+       Envía UN correo HTML con dos secciones:
+         🔴 "Tareas vencidas"      — fecha en rojo
+         🟡 "Próximas a vencer"   — días restantes en badge
+       Tabla: Descripción | Proyecto | Prioridad | Fecha entrega
+
+    4. Loguea en consola: enviados / sin correo / dry-run
+```
+
+**Modo dry-run:** igual que en 15.1 — si SMTP no está configurado, imprime los correos que se enviarían sin lanzar error.
 
 ---
 
@@ -812,8 +873,9 @@ docker compose restart api
 🔌 Socket.io activo (JWT rooms: alzak_global · user_{email} · task_{id})
 📡 Escuchando en 0.0.0.0:3005
 ✅ Tablas core: users, projects, meetings, tasks
-✅ Tablas soporte: pending_emails, db_notifications, task_notas, activity_logs
+✅ Tablas soporte: pending_emails, db_notifications, task_notas, activity_logs, password_resets, notification_reads
 ✅ DB validada y actualizada
+📅 [cron] Recordatorio diario programado — 8:00 AM (America/Bogota)
 ```
 
 ---
@@ -940,6 +1002,7 @@ npm run lint    # ESLint
 
 | Versión | Cambios principales |
 |---------|---------------------|
+| **v7.0** | Recordatorio diario cron (8 AM Bogotá) con tareas vencidas y próximas a vencer. Notificaciones independientes por admin: tabla `notification_reads` (junction) — cada admin tiene su propio estado de lectura sin afectar a los demás. Room `admins` en Socket.io para alertas globales. Comboboxes de proyecto con búsqueda en todos los filtros (Dashboard, Lista Maestra, Revisión). Z-index fixes para dropdowns. Tailscale Funnel + Nginx TLS en producción |
 | **v6.0** | Manual de vuelo completo. Matriz de revisión: comboboxes duales (ID+Nombre), scroll completo, solo activos, pill "✏️ Manual", fecha_inicio automática, botón Eliminar todo, modal Agregar tarea, modal confirmación Aprobar todo |
 | **v5.0** | Socket.io tiempo real, identidad visual corporativa (logo WebP), notificaciones completas con Web Audio, tour onboarding Driver.js |
 | **v4.0** | Filtros admin en Kanban (Proyecto + Responsable), pills de columna interactivos en móvil, inhabilitación de usuario con force-logout |

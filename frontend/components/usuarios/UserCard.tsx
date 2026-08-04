@@ -6,14 +6,15 @@ import { Switch }        from '@/components/ui/Switch';
 import { ROLE_CFG }      from './userConstants';
 
 interface UserCardProps {
-  u:         MockUser;
-  canEdit:   boolean;
-  onEdit:    () => void;
-  onToggle:  () => void;
-  onDelete:  (correo: string) => void;
+  u:               MockUser;
+  canEdit:         boolean;
+  onEdit:          () => void;
+  onToggle:        () => void;
+  onDelete:        (correo: string) => void;
+  onResetPassword: () => void;
 }
 
-export function UserCard({ u, canEdit, onEdit, onToggle, onDelete }: UserCardProps) {
+export function UserCard({ u, canEdit, onEdit, onToggle, onDelete, onResetPassword }: UserCardProps) {
   const rcfg     = ROLE_CFG[u.role];
   const initials = u.nombre_completo.split(' ').slice(0, 2).map((n) => n[0]).join('').toUpperCase();
   const [confirming, setConfirming] = useState(false);
@@ -65,6 +66,18 @@ export function UserCard({ u, canEdit, onEdit, onToggle, onDelete }: UserCardPro
           ) : (
             <>
               <Switch checked={u.activo} onChange={onToggle} label={`${u.activo ? 'Desactivar' : 'Activar'} ${u.nombre_completo}`} />
+
+              {/* Cambiar credenciales */}
+              <button
+                onClick={onResetPassword}
+                aria-label={`Cambiar credenciales de ${u.nombre_completo}`}
+                title="Cambiar credenciales"
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-alzak-blue dark:hover:text-alzak-gold hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors focus-visible:ring-2 focus-visible:ring-alzak-blue/50"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+              </button>
 
               {/* Editar */}
               <button

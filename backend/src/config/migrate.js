@@ -56,6 +56,20 @@ const COLUMN_MIGRATIONS = [
     sql:    "ALTER TABLE tasks ADD COLUMN semana_carga CHAR(8) NULL AFTER fecha_finalizacion",
     desc:   'Semana ISO (YYYY-WNN) en que la tarea fue aprobada/creada en el board',
   },
+  {
+    table:  'users',
+    column: 'activo',
+    check:  "SHOW COLUMNS FROM users LIKE 'activo'",
+    sql:    'ALTER TABLE users ADD COLUMN activo TINYINT(1) NOT NULL DEFAULT 1',
+    desc:   'Usuario activo (1) / inhabilitado (0)',
+  },
+  {
+    table:  'users',
+    column: 'must_change_password',
+    check:  "SHOW COLUMNS FROM users LIKE 'must_change_password'",
+    sql:    'ALTER TABLE users ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0',
+    desc:   'Forzar cambio de contraseña en el próximo inicio de sesión',
+  },
   // Garantizar que responsable_correo sea nullable (requerido para FK SET NULL)
   {
     table:  'tasks',

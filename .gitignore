@@ -13,5 +13,13 @@ node_modules/
 *.log
 npm-debug.log*
 
+# Certificados y claves TLS (NUNCA deben llegar al repo)
+*.key
+*.crt
+*.pem
+
+# Scripts locales con credenciales hardcodeadas
+backend/reset-pass.js
+
 # OS
 .DS_Store

@@ -19,7 +19,7 @@ function buildTransport() {
     port:   parseInt(SMTP_PORT || '587', 10),
     secure: parseInt(SMTP_PORT || '587', 10) === 465,
     auth:   { user: SMTP_USER, pass: SMTP_PASS },
-    tls:    { rejectUnauthorized: false },
+    tls:    { rejectUnauthorized: process.env.SMTP_TLS_INSECURE !== 'true' },
   });
 }
 

@@ -44,4 +44,13 @@ function emitTaskCreated() {
   _io?.to('alzak_global').emit('task_created');
 }
 
-module.exports = { setIo, getIo, emitNotifAlert, emitTaskUpdated, emitTaskCreated };
+/**
+ * Devuelve true si el usuario tiene al menos una conexión activa en la app.
+ * Útil para decidir si enviar un email a alguien que está desconectado.
+ * @param {string} email
+ */
+function isUserOnline(email) {
+  return (_io?.sockets.adapter.rooms.get(`user_${email}`)?.size ?? 0) > 0;
+}
+
+module.exports = { setIo, getIo, emitNotifAlert, emitTaskUpdated, emitTaskCreated, isUserOnline };

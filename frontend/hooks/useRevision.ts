@@ -24,12 +24,23 @@ export function useRevision() {
   const approveAllRunning = useRef(false);
   const rejectAllRunning  = useRef(false);
 
-  const approve = useCallback(async (task: RevisionTask): Promise<void> => {
+  const approve = useCallback(async (
+    task: RevisionTask,
+    responsables?: { correo: string; nombre: string }[],
+  ): Promise<void> => {
     setApprovingId(task.id);
     try {
-      const res = await authFetch(`/tareas/${task.id}/aprobar`, { method: 'PATCH' });
+      const res = await authFetch(`/tareas/${task.id}/aprobar`, {
+        method: 'PATCH',
+        body: responsables?.length ? JSON.stringify({ responsables }) : undefined,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      addToast(`✅ Tarea aprobada y enviada al Kanban`, 'success');
+      addToast(
+        responsables && responsables.length > 1
+          ? `✅ Tarea aprobada y repartida a ${responsables.length} investigadores`
+          : `✅ Tarea aprobada y enviada al Kanban`,
+        'success',
+      );
       await refreshRevision();
     } catch (e) {
       addToast(`Error al aprobar: ${e instanceof Error ? e.message : 'Error'}`, 'error');
@@ -107,8 +118,7 @@ export function useRevision() {
   const addManualTask = useCallback(async (data: {
     id_proyecto?:       string;
     tarea_descripcion:  string;
-    responsable_nombre?: string;
-    responsable_correo?: string;
+    responsables?:      { correo: string; nombre: string }[];
     prioridad?:          TareaPrioridad;
     fecha_inicio?:       string;
     fecha_entrega?:      string;

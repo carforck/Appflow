@@ -99,9 +99,82 @@ async function getTareas(req, res) {
   }
 }
 
+/**
+ * Normaliza los responsables de un body a un array de { correo, nombre }.
+ * Soporta el formato nuevo `responsables: [{correo,nombre}]` y el legacy
+ * `responsable_correo` / `responsable_nombre` (un solo responsable).
+ * Devuelve [] si no hay ninguno (tarea sin asignar).
+ */
+function normalizeResponsables(body) {
+  if (Array.isArray(body.responsables) && body.responsables.length) {
+    const vistos = new Set();
+    const out = [];
+    for (const r of body.responsables) {
+      const correo = (r?.correo || r?.responsable_correo || '').trim();
+      if (!correo || vistos.has(correo)) continue;   // ignora vacíos y duplicados
+      vistos.add(correo);
+      out.push({ correo, nombre: (r?.nombre || r?.responsable_nombre || correo) });
+    }
+    return out;
+  }
+  if (body.responsable_correo) {
+    return [{ correo: body.responsable_correo, nombre: body.responsable_nombre || body.responsable_correo }];
+  }
+  return [];
+}
+
+/**
+ * Crea las notificaciones (in-app + auditoría) y encola el correo de asignación
+ * para UNA tarea ya insertada. Reutilizado por crearTarea y aprobarRevision.
+ * @param {number} taskId
+ * @param {{ tarea_descripcion: string, proyNombre: string, prioridad: string, fecha_entrega: any }} info
+ * @param {{ correo: string, nombre: string } | null} responsable
+ * @param {object} reqUser  req.user
+ */
+async function notifyAsignacion(taskId, info, responsable, reqUser) {
+  try {
+    if (responsable?.correo) {
+      await pool.query(
+        `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
+         VALUES ('asignacion', 'Nueva tarea asignada', ?, ?, ?)`,
+        [`Se te ha asignado una nueva tarea en el Proyecto "${info.proyNombre}"`, taskId, responsable.correo]
+      );
+      emitNotifAlert(responsable.correo, {
+        tipo:    'asignacion',
+        id_tarea: taskId,
+        titulo:  'Nueva tarea asignada',
+        preview: `${(info.tarea_descripcion || '').slice(0, 100)} — Proyecto: ${info.proyNombre}`,
+        autor:   reqUser.nombre ?? reqUser.email,
+      });
+    }
+    await pool.query(
+      `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
+       VALUES ('auditoria', 'Tarea creada', ?, ?, NULL)`,
+      [`${responsable?.nombre || 'Sin asignar'} tiene una nueva tarea en "${info.proyNombre}"`, taskId]
+    );
+    emitNotifAlert(null, { tipo: 'auditoria', id_tarea: taskId });
+  } catch (notifErr) {
+    console.warn(`⚠️ Notificación no creada para tarea #${taskId}:`, notifErr.message);
+  }
+
+  if (responsable?.correo) {
+    queueApprovedTask({
+      destinatario_correo: responsable.correo,
+      destinatario_nombre: responsable.nombre || responsable.correo,
+      id_tarea:          taskId,
+      tarea_descripcion: info.tarea_descripcion,
+      proyecto_nombre:   info.proyNombre,
+      prioridad:         info.prioridad,
+      fecha_entrega:     info.fecha_entrega,
+    })
+      .then(() => scheduleEmailSend())
+      .catch((e) => console.error(`⚠️ queueApprovedTask #${taskId}:`, e.message));
+  }
+}
+
 async function crearTarea(req, res) {
   try {
-    const { id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo, prioridad, fecha_entrega, fecha_inicio } = req.body;
+    const { id_proyecto, tarea_descripcion, prioridad, fecha_entrega, fecha_inicio } = req.body;
 
     if (!id_proyecto || !tarea_descripcion || !prioridad || !fecha_entrega) {
       return res.status(400).json({ error: 'Faltan campos requeridos: id_proyecto, tarea_descripcion, prioridad, fecha_entrega' });
@@ -119,65 +192,36 @@ async function crearTarea(req, res) {
     const estadoInicial = esAdmin ? 'Pendiente' : 'Pendiente Revisión';
     const semana        = esAdmin ? getISOWeek() : null;
 
-    const [result] = await pool.query(
-      `INSERT INTO tasks (id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo,
-        prioridad, fecha_inicio, fecha_entrega, estado_tarea, semana_carga)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id_proyecto, tarea_descripcion.trim(), responsable_nombre || null, responsable_correo || null, prioridad, fechaInicioFinal, fecha_entrega, estadoInicial, semana]
-    );
-    const taskId = result.insertId;
+    const desc = tarea_descripcion.trim();
+    // Una tarea INDEPENDIENTE por cada responsable. Si no hay ninguno → 1 tarea sin asignar.
+    const responsables = normalizeResponsables(req.body);
+    const targets = responsables.length ? responsables : [null];
+    const info = { tarea_descripcion: desc, proyNombre, prioridad, fecha_entrega };
 
-    // Notificaciones + alertas en tiempo real
-    try {
-      if (responsable_correo) {
-        await pool.query(
-          `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
-           VALUES ('asignacion', 'Nueva tarea asignada', ?, ?, ?)`,
-          [`Se te ha asignado una nueva tarea en el Proyecto "${proyNombre}"`, taskId, responsable_correo]
-        );
-        emitNotifAlert(responsable_correo, {
-          tipo:    'asignacion',
-          id_tarea: taskId,
-          titulo:  'Nueva tarea asignada',
-          preview: `${tarea_descripcion.trim().slice(0, 100)} — Proyecto: ${proyNombre}`,
-          autor:   req.user.nombre ?? req.user.email,
-        });
-      }
-      await pool.query(
-        `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
-         VALUES ('auditoria', 'Tarea creada', ?, ?, NULL)`,
-        [`${responsable_nombre || 'Sin asignar'} tiene una nueva tarea en "${proyNombre}"`, taskId]
+    const ids = [];
+    for (const resp of targets) {
+      const [result] = await pool.query(
+        `INSERT INTO tasks (id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo,
+          prioridad, fecha_inicio, fecha_entrega, estado_tarea, semana_carga)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id_proyecto, desc, resp?.nombre || null, resp?.correo || null, prioridad, fechaInicioFinal, fecha_entrega, estadoInicial, semana]
       );
-      emitNotifAlert(null, { tipo: 'auditoria', id_tarea: taskId });
-    } catch (notifErr) {
-      console.warn(`⚠️ Notificación no creada para tarea #${taskId}:`, notifErr.message);
+      const taskId = result.insertId;
+      ids.push(taskId);
+      await notifyAsignacion(taskId, info, resp, req.user);
     }
 
     emitTaskCreated();
 
-    if (responsable_correo) {
-      queueApprovedTask({
-        destinatario_correo: responsable_correo,
-        destinatario_nombre: responsable_nombre || responsable_correo,
-        id_tarea:          taskId,
-        tarea_descripcion: tarea_descripcion.trim(),
-        proyecto_nombre:   proyNombre,
-        prioridad,
-        fecha_entrega,
-      })
-        .then(() => scheduleEmailSend())
-        .catch((e) => console.error(`⚠️ queueApprovedTask crearTarea #${taskId}:`, e.message));
-    }
-
-    console.log(`✅ POST /tareas/crear → id=${taskId} proyecto=${id_proyecto}`);
+    console.log(`✅ POST /tareas/crear → ${ids.length} tarea(s) [${ids.join(', ')}] proyecto=${id_proyecto}`);
     logActivity({
       correo: req.user.email, nombre: req.user.nombre, role: req.user.role,
       accion: 'Create', modulo: 'Tareas',
-      detalle: `Tarea creada en "${proyNombre}": ${tarea_descripcion.trim().substring(0, 80)}`,
+      detalle: `Tarea creada en "${proyNombre}" para ${targets.length} responsable(s): ${desc.substring(0, 80)}`,
       ip: req.headers['x-forwarded-for']?.split(',')[0] ?? req.ip,
-      entityId: taskId, entityType: 'tasks',
+      entityId: ids[0], entityType: 'tasks',
     });
-    res.status(201).json({ status: 'success', id: taskId });
+    res.status(201).json({ status: 'success', ids, count: ids.length, id: ids[0] });
   } catch (err) {
     console.error('❌ POST /tareas/crear:', err.message);
     res.status(500).json({ error: 'Error al crear tarea', detalle: err.message });
@@ -238,7 +282,7 @@ async function aprobarRevision(req, res) {
     const [[task]] = await pool.query(`
       SELECT t.id, t.id_proyecto, t.tarea_descripcion,
              t.responsable_nombre, t.responsable_correo,
-             t.prioridad, t.fecha_entrega,
+             t.prioridad, t.fecha_inicio, t.fecha_entrega,
              COALESCE(p.nombre_proyecto, t.id_proyecto) AS nombre_proyecto
       FROM tasks t
       LEFT JOIN projects p ON t.id_proyecto = p.id_proyecto
@@ -247,47 +291,54 @@ async function aprobarRevision(req, res) {
 
     if (!task) return res.status(404).json({ error: 'Tarea no encontrada o ya procesada' });
 
+    // Responsables a los que se reparte: los del body (reparto explícito) o
+    // el que ya tenía la tarea. Cada uno recibe una tarea INDEPENDIENTE.
+    const responsablesBody = normalizeResponsables(req.body);
+    const responsables = responsablesBody.length
+      ? responsablesBody
+      : (task.responsable_correo
+          ? [{ correo: task.responsable_correo, nombre: task.responsable_nombre }]
+          : [null]);
+
+    const semana = getISOWeek();
+    const info   = {
+      tarea_descripcion: task.tarea_descripcion,
+      proyNombre:        task.nombre_proyecto,
+      prioridad:         task.prioridad,
+      fecha_entrega:     task.fecha_entrega,
+    };
+    const fechaInicio = task.fecha_inicio ?? new Date().toISOString().slice(0, 10);
+
+    // 1) La fila original se aprueba y queda para el primer responsable.
+    const primero = responsables[0];
     await pool.query(
-      `UPDATE tasks SET estado_tarea = 'Pendiente', semana_carga = ? WHERE id = ? AND estado_tarea = 'Pendiente Revisión'`,
-      [getISOWeek(), id]
+      `UPDATE tasks SET estado_tarea = 'Pendiente', semana_carga = ?,
+         responsable_nombre = ?, responsable_correo = ?
+       WHERE id = ? AND estado_tarea = 'Pendiente Revisión'`,
+      [semana, primero?.nombre || null, primero?.correo || null, id]
     );
-    console.log(`✅ Tarea #${id} aprobada → Pendiente`);
+    const ids = [task.id];
+    await notifyAsignacion(task.id, info, primero, req.user);
 
-    // Notificaciones + alertas socket
-    const notifPromises = [];
-    if (task.responsable_correo) {
-      notifPromises.push(pool.query(
-        `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
-         VALUES ('asignacion', 'Nueva tarea asignada', ?, ?, ?)`,
-        [`Se te ha asignado una nueva tarea en el Proyecto "${task.nombre_proyecto}"`, task.id, task.responsable_correo]
-      ).then(() => emitNotifAlert(task.responsable_correo, { tipo: 'asignacion', id_tarea: task.id })));
+    // 2) Responsables adicionales → tareas clonadas independientes en 'Pendiente'.
+    for (let i = 1; i < responsables.length; i++) {
+      const resp = responsables[i];
+      const [r] = await pool.query(
+        `INSERT INTO tasks (id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo,
+          prioridad, fecha_inicio, fecha_entrega, estado_tarea, semana_carga)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'Pendiente', ?)`,
+        [task.id_proyecto, task.tarea_descripcion, resp?.nombre || null, resp?.correo || null,
+         task.prioridad, fechaInicio, task.fecha_entrega, semana]
+      );
+      ids.push(r.insertId);
+      await notifyAsignacion(r.insertId, info, resp, req.user);
     }
-    notifPromises.push(pool.query(
-      `INSERT INTO db_notifications (tipo, titulo, mensaje, id_tarea, destinatario_correo)
-       VALUES ('auditoria', 'Tarea aprobada', ?, ?, NULL)`,
-      [`${task.responsable_nombre || 'Sin asignar'} tiene una nueva tarea en "${task.nombre_proyecto}"`, task.id]
-    ).then(() => emitNotifAlert(null, { tipo: 'auditoria', id_tarea: task.id })));
 
-    Promise.all(notifPromises).catch((e) => console.warn(`⚠️ Notif aprobar #${id}:`, e.message));
-
-    // Tablero: la tarea aparece como nueva (pasó de Revisión a Pendiente)
+    // Tablero: las tareas aparecen como nuevas (pasaron de Revisión a Pendiente)
     emitTaskCreated();
 
-    if (task.responsable_correo) {
-      queueApprovedTask({
-        destinatario_correo: task.responsable_correo,
-        destinatario_nombre: task.responsable_nombre,
-        id_tarea:          task.id,
-        tarea_descripcion: task.tarea_descripcion,
-        proyecto_nombre:   task.nombre_proyecto,
-        prioridad:         task.prioridad,
-        fecha_entrega:     task.fecha_entrega,
-      })
-        .then(() => scheduleEmailSend())
-        .catch((e) => console.error(`⚠️ queueApprovedTask #${id}:`, e.message));
-    }
-
-    res.json({ status: 'approved' });
+    console.log(`✅ Tarea #${id} aprobada → ${ids.length} tarea(s) [${ids.join(', ')}]`);
+    res.json({ status: 'approved', ids, count: ids.length });
   } catch (err) {
     console.error('❌ PATCH /tareas/:id/aprobar:', err.message);
     res.status(500).json({ error: 'Error al aprobar tarea', detalle: err.message });
@@ -313,8 +364,6 @@ async function crearTareaRevision(req, res) {
   const {
     id_proyecto,
     tarea_descripcion,
-    responsable_nombre,
-    responsable_correo,
     prioridad    = 'Media',
     fecha_inicio,
     fecha_entrega,
@@ -327,26 +376,28 @@ async function crearTareaRevision(req, res) {
   const VALID_PRIO = ['Alta', 'Media', 'Baja'];
   const prioFinal  = VALID_PRIO.includes(prioridad) ? prioridad : 'Media';
   const fechaFinal = fecha_entrega || new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  const inicioFinal = fecha_inicio || new Date().toISOString().slice(0, 10);
+  const desc        = tarea_descripcion.trim();
+
+  // Una fila de revisión INDEPENDIENTE por responsable. Sin asignar → 1 fila.
+  const responsables = normalizeResponsables(req.body);
+  const targets = responsables.length ? responsables : [null];
 
   try {
-    const [result] = await pool.query(
-      `INSERT INTO tasks
-         (id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo,
-          prioridad, estado_tarea, fecha_inicio, fecha_entrega)
-       VALUES (?, ?, ?, ?, ?, 'Pendiente Revisión', ?, ?)`,
-      [
-        id_proyecto || '1111',
-        tarea_descripcion.trim(),
-        responsable_nombre || null,
-        responsable_correo || null,
-        prioFinal,
-        fecha_inicio  || new Date().toISOString().slice(0, 10),
-        fechaFinal,
-      ]
-    );
+    const ids = [];
+    for (const resp of targets) {
+      const [result] = await pool.query(
+        `INSERT INTO tasks
+           (id_proyecto, tarea_descripcion, responsable_nombre, responsable_correo,
+            prioridad, estado_tarea, fecha_inicio, fecha_entrega)
+         VALUES (?, ?, ?, ?, ?, 'Pendiente Revisión', ?, ?)`,
+        [id_proyecto || '1111', desc, resp?.nombre || null, resp?.correo || null, prioFinal, inicioFinal, fechaFinal]
+      );
+      ids.push(result.insertId);
+    }
     emitTaskCreated();
-    console.log(`📝 Tarea manual en revisión: #${result.insertId} por ${req.user.email}`);
-    res.status(201).json({ status: 'created', id: result.insertId });
+    console.log(`📝 Tarea manual en revisión: ${ids.length} fila(s) [${ids.join(', ')}] por ${req.user.email}`);
+    res.status(201).json({ status: 'created', ids, count: ids.length, id: ids[0] });
   } catch (err) {
     console.error('❌ POST /tareas/revision:', err.message);
     res.status(500).json({ error: 'Error al crear tarea', detalle: err.message });

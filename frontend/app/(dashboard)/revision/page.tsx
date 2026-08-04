@@ -252,9 +252,9 @@ export default function RevisionPage() {
                     approving={approvingId === task.id}
                     rejecting={rejectingId === task.id}
                     isInvalid={invalidIds.has(task.id)}
-                    onApprove={() => {
+                    onApprove={(responsables) => {
                       setInvalidIds((s) => { const n = new Set(s); n.delete(task.id); return n; });
-                      approve(task);
+                      approve(task, responsables);
                     }}
                     onReject={() => reject(task)}
                     onUpdate={makeUpdateHandler(task.id, task)}

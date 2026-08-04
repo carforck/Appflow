@@ -8,8 +8,6 @@ import type { TareaPrioridad } from '@/lib/mockData';
 interface FormData {
   id_proyecto:        string;
   tarea_descripcion:  string;
-  responsable_nombre: string;
-  responsable_correo: string;
   prioridad:          TareaPrioridad;
   fecha_inicio:       string;
   fecha_entrega:      string;
@@ -18,8 +16,7 @@ interface FormData {
 interface AddTaskData {
   id_proyecto?:        string;
   tarea_descripcion:   string;
-  responsable_nombre?: string;
-  responsable_correo?: string;
+  responsables?:       { correo: string; nombre: string }[];
   prioridad?:          TareaPrioridad;
   fecha_inicio?:       string;
   fecha_entrega?:      string;
@@ -47,8 +44,7 @@ const defaultDate = () => {
 
 export function AddRevisionTaskModal({ users, projects, projectMap, onAdd, onClose }: Props) {
   const [form, setForm] = useState<FormData>({
-    id_proyecto: '', tarea_descripcion: '', responsable_nombre: '',
-    responsable_correo: '', prioridad: 'Media',
+    id_proyecto: '', tarea_descripcion: '', prioridad: 'Media',
     fecha_inicio: '', fecha_entrega: defaultDate(),
   });
   const [proyNombre,  setProyNombre]  = useState('');
@@ -60,10 +56,10 @@ export function AddRevisionTaskModal({ users, projects, projectMap, onAdd, onClo
   const [projectSearch,  setProjectSearch]  = useState('');
   const [editProject,    setEditProject]    = useState(true);
 
-  // Responsable search
-  const [showUsers,       setShowUsers]       = useState(false);
-  const [userSearch,      setUserSearch]      = useState('');
-  const [editResponsable, setEditResponsable] = useState(true);
+  // Responsables (uno o varios → una tarea de revisión independiente por persona)
+  const [selectedUsers, setSelectedUsers] = useState<MockUser[]>([]);
+  const [showUsers,     setShowUsers]     = useState(false);
+  const [userSearch,    setUserSearch]    = useState('');
 
   const filteredProjects = projects
     .filter((p) => p.estado === 'Activo')
@@ -74,7 +70,9 @@ export function AddRevisionTaskModal({ users, projects, projectMap, onAdd, onClo
     );
 
   const filteredUsers = users.filter((u) =>
-    u.activo && (
+    u.activo &&
+    !selectedUsers.some((s) => s.correo === u.correo) &&
+    (
       !userSearch ||
       u.nombre_completo.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.correo.toLowerCase().includes(userSearch.toLowerCase())
@@ -98,19 +96,13 @@ export function AddRevisionTaskModal({ users, projects, projectMap, onAdd, onClo
     setProjectSearch('');
   };
 
-  const selectUser = (nombre: string, correo: string) => {
-    setForm((f) => ({ ...f, responsable_nombre: nombre, responsable_correo: correo }));
-    setEditResponsable(false);
-    setShowUsers(false);
+  const addUser = (u: MockUser) => {
+    setSelectedUsers((prev) => (prev.some((s) => s.correo === u.correo) ? prev : [...prev, u]));
     setUserSearch('');
-    setErrors((e) => ({ ...e, responsable_correo: undefined }));
   };
 
-  const clearUser = () => {
-    setForm((f) => ({ ...f, responsable_nombre: '', responsable_correo: '' }));
-    setEditResponsable(true);
-    setUserSearch('');
-  };
+  const removeUser = (correo: string) =>
+    setSelectedUsers((prev) => prev.filter((u) => u.correo !== correo));
 
   const validate = () => {
     const e: typeof errors = {};
@@ -126,8 +118,9 @@ export function AddRevisionTaskModal({ users, projects, projectMap, onAdd, onClo
     const ok = await onAdd({
       id_proyecto:        form.id_proyecto || undefined,
       tarea_descripcion:  form.tarea_descripcion.trim(),
-      responsable_nombre: form.responsable_nombre || undefined,
-      responsable_correo: form.responsable_correo || undefined,
+      responsables:       selectedUsers.length
+        ? selectedUsers.map((u) => ({ correo: u.correo, nombre: u.nombre_completo }))
+        : undefined,
       prioridad:          form.prioridad,
       fecha_inicio:       form.fecha_inicio  || undefined,
       fecha_entrega:      form.fecha_entrega,
@@ -223,33 +216,48 @@ export function AddRevisionTaskModal({ users, projects, projectMap, onAdd, onClo
           {errors.tarea_descripcion && <p id="desc-error" role="alert" className="text-xs text-red-500">{errors.tarea_descripcion}</p>}
         </div>
 
-        {/* Responsable */}
+        {/* Responsables (uno o varios) */}
         <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Responsable</label>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+            Responsables <span className="font-normal text-slate-400">— una tarea de revisión independiente por persona</span>
+          </label>
+
+          {selectedUsers.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pb-1">
+              {selectedUsers.map((u) => (
+                <span
+                  key={u.correo}
+                  className="inline-flex items-center gap-1.5 pl-2 pr-2 py-1 rounded-full border border-alzak-blue/40 bg-alzak-blue/5 dark:bg-alzak-gold/10 text-xs"
+                >
+                  <span className="font-medium text-slate-800 dark:text-white truncate max-w-[160px]">{u.nombre_completo}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeUser(u.correo)}
+                    aria-label={`Quitar a ${u.nombre_completo}`}
+                    className="text-slate-400 hover:text-red-500 font-bold leading-none"
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
+
           <div className="relative">
-            {form.responsable_correo && !editResponsable ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
-                <span className="text-sm text-slate-700 dark:text-slate-200 flex-1 truncate">{form.responsable_nombre}</span>
-                <button onClick={clearUser} aria-label="Cambiar responsable" className="text-slate-400 hover:text-red-500 font-bold text-sm">×</button>
-              </div>
-            ) : (
-              <input
-                type="text"
-                value={userSearch}
-                onChange={(e) => { setUserSearch(e.target.value); setShowUsers(true); }}
-                onFocus={() => setShowUsers(true)}
-                onBlur={() => setTimeout(() => { setShowUsers(false); }, 150)}
-                placeholder="Buscar por nombre o correo..."
-                className={inputCls()}
-              />
-            )}
+            <input
+              type="text"
+              value={userSearch}
+              onChange={(e) => { setUserSearch(e.target.value); setShowUsers(true); }}
+              onFocus={() => setShowUsers(true)}
+              onBlur={() => setTimeout(() => { setShowUsers(false); }, 150)}
+              placeholder={selectedUsers.length ? 'Añadir otro responsable…' : 'Buscar por nombre o correo...'}
+              className={inputCls()}
+            />
             {showUsers && filteredUsers.length > 0 && (
               <div className="absolute z-20 left-0 top-full mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl max-h-52 overflow-y-auto kanban-scroll">
                 {filteredUsers.map((u) => (
                   <button
                     key={u.correo}
                     type="button"
-                    onMouseDown={() => selectUser(u.nombre_completo, u.correo)}
+                    onMouseDown={(e) => { e.preventDefault(); addUser(u); }}
                     className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors"
                   >
                     <p className="text-sm font-medium text-slate-700 dark:text-white truncate">{u.nombre_completo}</p>

@@ -37,7 +37,7 @@ export default function NewTaskModal({ onClose }: Props) {
   const [fechaEntrega, setFechaEntrega] = useState('');
   const [userSearch,   setUserSearch]   = useState('');
   const { users } = useUsuarios();
-  const [selectedUser, setSelectedUser] = useState<MockUser | null>(null);
+  const [selectedUsers, setSelectedUsers] = useState<MockUser[]>([]);
   const [errors,       setErrors]       = useState<Record<string, string>>({});
   const [submitting,   setSubmitting]   = useState(false);
 
@@ -56,9 +56,18 @@ export default function NewTaskModal({ onClose }: Props) {
   const filteredUsers = users.filter(
     (u) =>
       u.activo &&
+      !selectedUsers.some((s) => s.correo === u.correo) &&
       (u.nombre_completo.toLowerCase().includes(userSearch.toLowerCase()) ||
         u.correo.toLowerCase().includes(userSearch.toLowerCase())),
   ).slice(0, 6);
+
+  const addUser = (u: MockUser) => {
+    setSelectedUsers((prev) => (prev.some((s) => s.correo === u.correo) ? prev : [...prev, u]));
+    setUserSearch('');
+    clearError('responsable');
+  };
+  const removeUser = (correo: string) =>
+    setSelectedUsers((prev) => prev.filter((u) => u.correo !== correo));
 
   // Click-outside proyecto combobox
   useEffect(() => {
@@ -84,10 +93,10 @@ export default function NewTaskModal({ onClose }: Props) {
 
   function validate() {
     const e: Record<string, string> = {};
-    if (!proyectoId)          e.proyecto    = 'Selecciona un proyecto';
-    if (!descripcion.trim())  e.descripcion = 'La descripción es requerida';
-    if (!selectedUser)        e.responsable = 'Selecciona un responsable';
-    if (!fechaEntrega)        e.fecha       = 'La fecha de entrega es requerida';
+    if (!proyectoId)              e.proyecto    = 'Selecciona un proyecto';
+    if (!descripcion.trim())      e.descripcion = 'La descripción es requerida';
+    if (selectedUsers.length === 0) e.responsable = 'Selecciona al menos un responsable';
+    if (!fechaEntrega)            e.fecha       = 'La fecha de entrega es requerida';
     if (fechaEntrega && fechaEntrega < fechaInicio) e.fecha = 'La fecha de entrega debe ser posterior al inicio';
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -99,20 +108,19 @@ export default function NewTaskModal({ onClose }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!validate() || !selectedUser || !selectedProject) return;
+    if (!validate() || selectedUsers.length === 0 || !selectedProject) return;
 
     setSubmitting(true);
     try {
       const res = await authFetch('/tareas/crear', {
         method: 'POST',
         body: JSON.stringify({
-          id_proyecto:        proyectoId,
-          tarea_descripcion:  descripcion.trim(),
-          responsable_nombre: selectedUser.nombre_completo,
-          responsable_correo: selectedUser.correo,
+          id_proyecto:       proyectoId,
+          tarea_descripcion: descripcion.trim(),
+          responsables:      selectedUsers.map((u) => ({ correo: u.correo, nombre: u.nombre_completo })),
           prioridad,
-          fecha_inicio:       fechaInicio,
-          fecha_entrega:      fechaEntrega,
+          fecha_inicio:      fechaInicio,
+          fecha_entrega:     fechaEntrega,
         }),
       });
 
@@ -122,19 +130,26 @@ export default function NewTaskModal({ onClose }: Props) {
         return;
       }
 
-      // Optimistic: agrega la tarea al board inmediatamente con ID temporal
-      // El socket task_created reemplazará el ID temporal con el real vía refresh()
-      createTask({
-        id_proyecto:        proyectoId,
-        nombre_proyecto:    selectedProject.nombre_proyecto,
-        tarea_descripcion:  descripcion.trim(),
-        responsable_nombre: selectedUser.nombre_completo,
-        responsable_correo: selectedUser.correo,
-        prioridad,
-        fecha_inicio:       fechaInicio,
-        fecha_entrega:      fechaEntrega,
+      // Optimistic: agrega una tarea independiente por responsable con ID temporal.
+      // El socket task_created + refresh() reemplazan los IDs temporales por los reales.
+      selectedUsers.forEach((u) => {
+        createTask({
+          id_proyecto:        proyectoId,
+          nombre_proyecto:    selectedProject.nombre_proyecto,
+          tarea_descripcion:  descripcion.trim(),
+          responsable_nombre: u.nombre_completo,
+          responsable_correo: u.correo,
+          prioridad,
+          fecha_inicio:       fechaInicio,
+          fecha_entrega:      fechaEntrega,
+        });
       });
-      addToast(`Tarea creada y asignada a ${selectedUser.nombre_completo}`, 'success');
+      addToast(
+        selectedUsers.length === 1
+          ? `Tarea creada y asignada a ${selectedUsers[0].nombre_completo}`
+          : `Tarea creada y asignada a ${selectedUsers.length} investigadores (una copia independiente c/u)`,
+        'success',
+      );
       onClose();
       refresh().catch(() => {});
     } catch {
@@ -258,54 +273,65 @@ export default function NewTaskModal({ onClose }: Props) {
             {errors.descripcion && <p className="text-[10px] text-red-500 mt-1">{errors.descripcion}</p>}
           </div>
 
-          {/* Responsable */}
+          {/* Responsables (uno o varios) */}
           <div className="relative">
             <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
-              Responsable <span className="text-red-500">*</span>
+              Responsables <span className="text-red-500">*</span>
+              <span className="ml-1 font-normal text-slate-400">— puedes asignar a varios (una tarea independiente por persona)</span>
             </label>
-            {selectedUser ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-alzak-blue/40 bg-alzak-blue/5 dark:bg-alzak-blue/10">
-                <div className="w-7 h-7 rounded-full bg-alzak-blue text-white text-[10px] font-bold flex items-center justify-center shrink-0">
-                  {selectedUser.nombre_completo.split(' ').map((w) => w[0]).slice(0, 2).join('')}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-slate-800 dark:text-white truncate">{selectedUser.nombre_completo}</p>
-                  <p className="text-[10px] text-slate-400 truncate">{selectedUser.correo}</p>
-                </div>
-                <button type="button" onClick={() => { setSelectedUser(null); setUserSearch(''); }} className="text-slate-400 hover:text-slate-600 text-sm">×</button>
+
+            {/* Chips de seleccionados */}
+            {selectedUsers.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {selectedUsers.map((u) => (
+                  <span
+                    key={u.correo}
+                    className="inline-flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full border border-alzak-blue/40 bg-alzak-blue/5 dark:bg-alzak-blue/10 text-xs"
+                  >
+                    <span className="w-5 h-5 rounded-full bg-alzak-blue text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                      {u.nombre_completo.split(' ').map((w) => w[0]).slice(0, 2).join('')}
+                    </span>
+                    <span className="font-medium text-slate-800 dark:text-white truncate max-w-[140px]">{u.nombre_completo}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeUser(u.correo)}
+                      aria-label={`Quitar a ${u.nombre_completo}`}
+                      className="text-slate-400 hover:text-red-500 font-bold leading-none"
+                    >×</button>
+                  </span>
+                ))}
               </div>
-            ) : (
-              <>
-                <input
-                  ref={userInputRef}
-                  type="text"
-                  value={userSearch}
-                  onChange={(e) => { setUserSearch(e.target.value); setShowDropdown(true); clearError('responsable'); }}
-                  onFocus={() => setShowDropdown(true)}
-                  placeholder="Buscar por nombre o correo..."
-                  className="w-full text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-alzak-blue/40"
-                />
-                {showDropdown && userSearch.length > 0 && filteredUsers.length > 0 && (
-                  <div className="absolute z-10 w-full mt-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg overflow-hidden">
-                    {filteredUsers.map((u) => (
-                      <button
-                        key={u.correo}
-                        type="button"
-                        onMouseDown={() => { setSelectedUser(u); setUserSearch(''); setShowDropdown(false); }}
-                        className="w-full text-left flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors"
-                      >
-                        <div className="w-6 h-6 rounded-full bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-white text-[9px] font-bold flex items-center justify-center shrink-0">
-                          {u.nombre_completo.split(' ').map((w) => w[0]).slice(0, 2).join('')}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-slate-800 dark:text-white truncate">{u.nombre_completo}</p>
-                          <p className="text-[10px] text-slate-400 truncate">{u.correo}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
+            )}
+
+            <input
+              ref={userInputRef}
+              type="text"
+              value={userSearch}
+              onChange={(e) => { setUserSearch(e.target.value); setShowDropdown(true); clearError('responsable'); }}
+              onFocus={() => setShowDropdown(true)}
+              onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+              placeholder={selectedUsers.length ? 'Añadir otro responsable…' : 'Buscar por nombre o correo...'}
+              className="w-full text-sm px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-alzak-blue/40"
+            />
+            {showDropdown && userSearch.length > 0 && filteredUsers.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg overflow-hidden">
+                {filteredUsers.map((u) => (
+                  <button
+                    key={u.correo}
+                    type="button"
+                    onMouseDown={(e) => { e.preventDefault(); addUser(u); }}
+                    className="w-full text-left flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-slate-300 dark:bg-slate-600 text-slate-700 dark:text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                      {u.nombre_completo.split(' ').map((w) => w[0]).slice(0, 2).join('')}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-slate-800 dark:text-white truncate">{u.nombre_completo}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{u.correo}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             )}
             {errors.responsable && <p className="text-[10px] text-red-500 mt-1">{errors.responsable}</p>}
           </div>

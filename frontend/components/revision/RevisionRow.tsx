@@ -24,7 +24,7 @@ interface Props {
   approving:  boolean;
   rejecting:  boolean;
   isInvalid:  boolean;
-  onApprove:  () => void;
+  onApprove:  (responsables?: { correo: string; nombre: string }[]) => void;
   onReject:   () => void;
   onUpdate:   (changes: RevisionChanges) => Promise<boolean>;
 }
@@ -48,6 +48,11 @@ export default function RevisionRow({
   const [editResponsable, setEditResponsable] = useState(false);
   const [fechaInicio, setFechaInicio] = useState(task.fecha_inicio ?? '');
   const [fechaFin,    setFechaFin]    = useState(task.fecha_entrega ?? '');
+
+  // "Aprobar y repartir" — asignar la misma tarea a varios investigadores
+  const [showReparto,  setShowReparto]  = useState(false);
+  const [repartoSel,   setRepartoSel]   = useState<MockUser[]>([]);
+  const [repartoQuery, setRepartoQuery] = useState('');
 
   const [proyId,             setProyId]             = useState(task.id_proyecto);
   const [proyNombre,         setProyNombre]         = useState(task.nombre_proyecto);
@@ -125,6 +130,29 @@ export default function RevisionRow({
     setSaving(true);
     await onUpdate({ tarea_descripcion: desc });
     setSaving(false);
+  };
+
+  // ── Aprobar y repartir ──────────────────────────────────────────────────────
+  const repartoFiltered = users.filter((u) =>
+    u.activo &&
+    !repartoSel.some((s) => s.correo === u.correo) &&
+    (!repartoQuery ||
+      u.nombre_completo.toLowerCase().includes(repartoQuery.toLowerCase()) ||
+      u.correo.toLowerCase().includes(repartoQuery.toLowerCase()))
+  ).slice(0, 6);
+
+  const openReparto = () => {
+    // Precarga el responsable ya asignado (si lo hay) como primer destinatario
+    const actual = users.find((u) => u.correo === task.responsable_correo);
+    setRepartoSel(actual ? [actual] : []);
+    setRepartoQuery('');
+    setShowReparto(true);
+  };
+
+  const confirmReparto = () => {
+    if (repartoSel.length === 0) return;
+    setShowReparto(false);
+    onApprove(repartoSel.map((u) => ({ correo: u.correo, nombre: u.nombre_completo })));
   };
 
   return (
@@ -379,12 +407,86 @@ export default function RevisionRow({
             {rejecting ? '...' : 'Rechazar'}
           </button>
           <button
-            onClick={onApprove}
+            onClick={() => onApprove()}
             disabled={approving || rejecting}
             className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 transition-colors shadow-sm"
           >
             {approving ? '...' : 'Aprobar ✓'}
           </button>
+
+          {/* Aprobar y repartir a varios */}
+          <div className="relative">
+            <button
+              onClick={() => (showReparto ? setShowReparto(false) : openReparto())}
+              disabled={approving || rejecting}
+              aria-label="Aprobar y repartir a varios investigadores"
+              title="Aprobar y repartir a varios"
+              className="px-1.5 py-1 rounded-lg text-[10px] font-bold text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40 transition-colors"
+            >
+              👥▾
+            </button>
+
+            {showReparto && (
+              <>
+                {/* Backdrop para cerrar al hacer clic fuera */}
+                <div className="fixed inset-0 z-30" onClick={() => setShowReparto(false)} />
+                <div className="absolute right-0 top-full mt-1 z-40 w-64 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl p-3">
+                  <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200 mb-2">
+                    Repartir a varios investigadores
+                  </p>
+
+                  {/* Seleccionados */}
+                  {repartoSel.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {repartoSel.map((u) => (
+                        <span key={u.correo} className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[10px]">
+                          <span className="truncate max-w-[120px]">{u.nombre_completo}</span>
+                          <button
+                            type="button"
+                            onClick={() => setRepartoSel((p) => p.filter((x) => x.correo !== u.correo))}
+                            aria-label={`Quitar a ${u.nombre_completo}`}
+                            className="font-bold hover:text-red-500 leading-none"
+                          >×</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <input
+                    type="text"
+                    value={repartoQuery}
+                    onChange={(e) => setRepartoQuery(e.target.value)}
+                    placeholder="Buscar investigador…"
+                    aria-label="Buscar investigador para repartir"
+                    className="w-full text-[11px] px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                  />
+                  {repartoFiltered.length > 0 && (
+                    <div className="mt-1 max-h-40 overflow-y-auto kanban-scroll rounded-lg border border-slate-100 dark:border-slate-700/60">
+                      {repartoFiltered.map((u) => (
+                        <button
+                          key={u.correo}
+                          type="button"
+                          onClick={() => { setRepartoSel((p) => [...p, u]); setRepartoQuery(''); }}
+                          className="w-full text-left px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors"
+                        >
+                          <p className="text-[11px] font-medium text-slate-700 dark:text-white truncate">{u.nombre_completo}</p>
+                          <p className="text-[9px] text-slate-400 truncate">{u.correo}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={confirmReparto}
+                    disabled={repartoSel.length === 0 || approving}
+                    className="w-full mt-2 px-2 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-40 transition-colors"
+                  >
+                    Aprobar y repartir ({repartoSel.length})
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </td>
     </tr>

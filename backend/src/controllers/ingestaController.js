@@ -20,9 +20,12 @@ const SECTION_PATTERNS = [
   /seguimiento\s*[:\n]/i,
 ];
 
-// llama-3.3-70b-versatile tiene una ventana de contexto de 128k tokens.
+// openai/gpt-oss-120b tiene una ventana de contexto de 128k tokens.
 // 50k chars ≈ 31k tokens de texto puro — cómodo bajo el límite del modelo.
-const MAX_PROMPT_CHARS = 50_000;
+// Reducido a 10k para caber en el límite de 8.000 TPM del tier gratuito de Groq.
+// (input ~2.5k tok + contexto ~2.1k + respuesta 2.6k ≈ 7.2k < 8.000). Con Groq Dev
+// Tier se puede volver a subir a 50_000 para minutas largas completas.
+const MAX_PROMPT_CHARS = 10_000;
 
 /**
  * Prepara el texto para Groq con estrategia multi-sección:
@@ -160,9 +163,13 @@ async function ingestaAuto(req, res) {
     const groqRes = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
       {
-        model:       'llama-3.3-70b-versatile',
-        max_tokens:  4096,
+        model:       'openai/gpt-oss-120b',
+        max_tokens:  2600,
         temperature: 0.2,
+        // gpt-oss es un modelo de razonamiento: sin esto gasta todo max_tokens
+        // "pensando" y devuelve JSON vacío (json_validate_failed). 'low' deja
+        // el presupuesto para la respuesta y reduce el consumo de TPM.
+        reasoning_effort: 'low',
         messages: [
           {
             role: 'system',

@@ -1,16 +1,13 @@
 /**
  * src/services/systemStatusService.js
- * Diagnóstico técnico diario del sistema para el superadmin/dev.
+ * Diagnóstico técnico diario del sistema para el superadmin (asistenteti).
  *
- * Métricas recopiladas:
- *   - Runtime Node.js: uptime, heap, RSS, versión
- *   - OS: CPUs, RAM libre, load average (con contexto por core)
- *   - DB: latencia de conexión, tamaño y filas por tabla
- *   - Actividad 24h: requests, acciones, módulos, IPs únicas
- *   - Email: entregados 24h / 7d / atascados
- *   - Notificaciones: total, leídas, sin leer, nuevas 24h
- *   - Usuarios inactivos
- *   - Jobs programados (estado declarativo)
+ * Diseño del correo: claro, legible y con lo accionable primero
+ *   1. Estado general + semáforos
+ *   2. KPIs clave (vencidas, completadas, usuarios, errores, sin leer, latencia)
+ *   3. Tareas (desglose + quién está atrasado)
+ *   4. Usuarios, actividad, salud del servidor, DB, email, notificaciones
+ *   5. Alertas (errores, resets) y jobs programados
  */
 
 const nodemailer = require('nodemailer');
@@ -36,6 +33,13 @@ function pct(used, total) {
   return total > 0 ? Math.round((used / total) * 100) : 0;
 }
 
+/** Escapa contenido dinámico de la DB antes de meterlo en el HTML. */
+function esc(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function buildTransport() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
@@ -46,13 +50,6 @@ function buildTransport() {
     auth: { user: SMTP_USER, pass: SMTP_PASS },
     tls: { rejectUnauthorized: process.env.SMTP_TLS_INSECURE !== 'true' },
   });
-}
-
-// Semáforo visual simple
-function light(ok, warn, crit, val) {
-  if (val >= crit)  return { icon: '🔴', level: 'CRÍTICO' };
-  if (val >= warn)  return { icon: '🟡', level: 'ATENCIÓN' };
-  return { icon: '✅', level: 'OK' };
 }
 
 // ── Recopilación de métricas ──────────────────────────────────────────────────
@@ -100,13 +97,6 @@ async function fetchTechData() {
     WHERE created_at >= NOW() - INTERVAL 24 HOUR
   `);
 
-  // Intentos de auth fallidos (tokens expirados en logs no van a activity_logs,
-  // pero sí va el Login exitoso — calculamos diferencia vs sesiones activas)
-  const [failedAuth] = await pool.query(`
-    SELECT COUNT(*) AS cnt FROM password_resets
-    WHERE created_at >= NOW() - INTERVAL 24 HOUR
-  `);
-
   // Email stats
   const [email24h] = await pool.query(`SELECT COUNT(*) AS cnt FROM pending_emails WHERE enviado=1 AND sent_at >= NOW()-INTERVAL 24 HOUR`);
   const [email7d]  = await pool.query(`SELECT COUNT(*) AS cnt FROM pending_emails WHERE enviado=1 AND sent_at >= NOW()-INTERVAL 7 DAY`);
@@ -123,8 +113,6 @@ async function fetchTechData() {
       SUM(created_at >= NOW() - INTERVAL 7 DAY)   AS nuevas_7d
     FROM db_notifications
   `);
-
-  // Notificaciones por tipo
   const [notifTipos] = await pool.query(`
     SELECT tipo, COUNT(*) AS cnt FROM db_notifications
     GROUP BY tipo ORDER BY cnt DESC
@@ -159,13 +147,25 @@ async function fetchTechData() {
     ORDER BY created_at DESC LIMIT 5
   `);
 
-  // Tareas KPI rápido (solo para contexto)
+  // Tareas — desglose por estado
   const [tareasKpi] = await pool.query(`
     SELECT
       COUNT(*) AS total,
-      SUM(estado_tarea='Completada') AS completadas,
+      SUM(estado_tarea='Completada')  AS completadas,
+      SUM(estado_tarea='En Proceso')  AS en_proceso,
+      SUM(estado_tarea='Pendiente')   AS pendientes,
       SUM(fecha_entrega < CURDATE() AND estado_tarea != 'Completada') AS vencidas
     FROM tasks
+  `);
+
+  // Quién está atrasado — top responsables con tareas vencidas (accionable)
+  const [vencidasPorResp] = await pool.query(`
+    SELECT responsable_nombre AS nombre, COUNT(*) AS c
+    FROM tasks
+    WHERE fecha_entrega < CURDATE() AND estado_tarea != 'Completada'
+      AND responsable_correo IS NOT NULL AND responsable_correo <> ''
+    GROUP BY responsable_correo, responsable_nombre
+    ORDER BY c DESC LIMIT 5
   `);
 
   return {
@@ -186,15 +186,8 @@ async function fetchTechData() {
       totalMem:  os.totalmem(),
       platform:  os.platform(),
     },
-    db: {
-      latency: dbLatency,
-      tables,
-    },
-    activity: {
-      meta:    activity_meta[0],
-      actions: actions24h,
-      modules: modules24h,
-    },
+    db: { latency: dbLatency, tables },
+    activity: { meta: activity_meta[0], actions: actions24h, modules: modules24h },
     email: {
       sent24h:  email24h[0].cnt,
       sent7d:   email7d[0].cnt,
@@ -202,23 +195,15 @@ async function fetchTechData() {
       total:    emailTot[0].total,
       totalSent:emailTot[0].enviados,
     },
-    notifs: {
-      ...notifStats[0],
-      tipos: notifTipos,
-    },
-    notas: {
-      last24h: notas24h[0].cnt,
-      total:   notasTotal[0].cnt,
-    },
+    notifs: { ...notifStats[0], tipos: notifTipos },
+    notas: { last24h: notas24h[0].cnt, total: notasTotal[0].cnt },
     inactivos,
     usersByRole,
     errors24h,
     resets24h,
     tareas: tareasKpi[0],
-    smtp: {
-      host: process.env.SMTP_HOST || null,
-      user: process.env.SMTP_USER || null,
-    },
+    vencidasPorResp,
+    smtp: { host: process.env.SMTP_HOST || null, user: process.env.SMTP_USER || null },
   };
 }
 
@@ -227,310 +212,242 @@ async function fetchTechData() {
 function buildTechHtml(d) {
   const hoy  = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const hora = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' });
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://appflow2026.vercel.app';
 
-  const { runtime, os: osData, db, activity, email, notifs, notas, inactivos, usersByRole, errors24h, resets24h, tareas, smtp } = d;
+  const { runtime, os: osData, db, activity, email, notifs, notas, inactivos, usersByRole, errors24h, resets24h, tareas, vencidasPorResp, smtp } = d;
 
-  // ── Thresholds técnicos ────────────────────────────────────────────────────
-  const dbOk     = db.latency < 300;
-  const dbWarn   = db.latency >= 300 && db.latency < 600;
+  // ── Umbrales (latencia DB: túnel SSH a DigitalOcean tiene ~500ms normales) ──
   const heapPct  = pct(runtime.heapUsed, runtime.heapTotal);
-  const memFree  = (osData.freeMem / osData.totalMem) * 100;
+  const memUsedPct = 100 - (osData.freeMem / osData.totalMem) * 100;
   const perCore  = osData.cpuLoad;
 
+  const st = (icon) => ({
+    '✅': { bg: '#dcfce7', bd: '#bbf7d0', fg: '#15803d' },
+    '🟡': { bg: '#fef3c7', bd: '#fde68a', fg: '#b45309' },
+    '🔴': { bg: '#fee2e2', bd: '#fecaca', fg: '#b91c1c' },
+  }[icon]);
+
+  const dbIcon   = db.latency < 600 ? '✅' : db.latency < 1200 ? '🟡' : '🔴';
+  const heapIcon = heapPct < 75 ? '✅' : heapPct < 90 ? '🟡' : '🔴';
+  const memIcon  = memUsedPct < 80 ? '✅' : memUsedPct < 92 ? '🟡' : '🔴';
+  const errIcon  = errors24h.length === 0 ? '✅' : '🟡';
+
   const semaforos = [
-    { label: 'API Runtime',    ok: true,             icon: '✅' },
-    { label: 'DB Latencia',    ok: dbOk,             icon: dbWarn ? '🟡' : (db.latency >= 600 ? '🔴' : '✅') },
-    { label: 'Heap Node.js',   ok: heapPct < 80,     icon: heapPct >= 90 ? '🔴' : heapPct >= 70 ? '🟡' : '✅' },
-    { label: 'Memoria OS',     ok: memFree > 20,     icon: memFree < 10 ? '🔴' : memFree < 20 ? '🟡' : '✅' },
-    { label: 'Email SMTP',     ok: !!smtp.host,      icon: smtp.host ? '✅' : '🔴' },
-    { label: 'Errores 24h',    ok: errors24h.length === 0, icon: errors24h.length > 0 ? '🟡' : '✅' },
+    { label: 'API Runtime', icon: '✅' },
+    { label: 'DB Latencia', icon: dbIcon },
+    { label: 'Heap Node',   icon: heapIcon },
+    { label: 'Memoria OS',  icon: memIcon },
+    { label: 'Email SMTP',  icon: smtp.host ? '✅' : '🔴' },
+    { label: 'Errores 24h', icon: errIcon },
   ];
-
-  const overallOk = semaforos.every(s => s.icon === '✅');
+  // El badge refleja la salud TÉCNICA del sistema; las tareas vencidas van en el
+  // asunto y en su propio KPI (son negocio, no un fallo técnico).
   const overallCrit = semaforos.some(s => s.icon === '🔴');
+  const overallWarn = semaforos.some(s => s.icon === '🟡');
+  const estado = overallCrit
+    ? { txt: 'REQUIERE ATENCIÓN', bg: '#b91c1c', fg: '#ffffff' }
+    : overallWarn
+      ? { txt: 'CON OBSERVACIONES', bg: '#b45309', fg: '#ffffff' }
+      : { txt: 'TODO EN ORDEN', bg: '#15803d', fg: '#ffffff' };
 
-  const semChips = semaforos.map(s =>
-    `<span style="display:inline-block;margin:3px;background:${s.icon==='✅'?'#f0fdf4':s.icon==='🟡'?'#fffbeb':'#fef2f2'};border:1px solid ${s.icon==='✅'?'#bbf7d0':s.icon==='🟡'?'#fde68a':'#fecaca'};border-radius:8px;padding:5px 10px;font-size:12px;color:#334155;">
-      ${s.icon} <strong>${s.label}</strong>
-    </span>`).join('');
+  const semChips = semaforos.map(s => {
+    const c = st(s.icon);
+    return `<span style="display:inline-block;margin:3px 4px 3px 0;background:${c.bg};border:1px solid ${c.bd};border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600;color:${c.fg};">${s.icon} ${s.label}</span>`;
+  }).join('');
 
-  // ── Runtime block ──────────────────────────────────────────────────────────
-  const runtimeRows = [
-    ['Node.js versión',   runtime.nodeVersion],
-    ['Uptime proceso',    uptimeStr(runtime.uptime)],
-    ['Heap usado',        `${mbStr(runtime.heapUsed)} / ${mbStr(runtime.heapTotal)} (${heapPct}%)`],
-    ['RSS (memoria real)',`${mbStr(runtime.rss)}`],
-    ['External',          `${mbStr(runtime.external)}`],
-  ].map(([k,v]) => `<tr><td style="padding:6px 12px;font-size:12px;color:#64748b;width:42%;border-bottom:1px solid #f1f5f9;">${k}</td><td style="padding:6px 12px;font-size:12px;color:#1e293b;font-weight:600;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('');
+  // ── KPIs hero ───────────────────────────────────────────────────────────────
+  const totalT = Number(tareas.total) || 0;
+  const complT = Number(tareas.completadas) || 0;
+  const vencT  = Number(tareas.vencidas) || 0;
+  const activosTot = usersByRole.reduce((a, u) => a + Number(u.activos), 0);
+  const usersTot   = usersByRole.reduce((a, u) => a + Number(u.total), 0);
+  const noLeidas   = Number(notifs.no_leidas) || 0;
 
-  // ── OS block ──────────────────────────────────────────────────────────────
-  const perCoreIcon = perCore > 2 ? '🔴' : perCore > 1 ? '🟡' : '✅';
-  const osRows = [
-    ['CPUs',              `${osData.cpuCount} cores`],
-    ['Load avg (1/5/15m)',`${osData.loadAvg.map(l=>l.toFixed(2)).join(' / ')} ${perCoreIcon} → ${perCore.toFixed(2)} por core`],
-    ['RAM libre',         `${(osData.freeMem/1024/1024/1024).toFixed(2)} GB / ${(osData.totalMem/1024/1024/1024).toFixed(2)} GB (${(100-memFree).toFixed(0)}% usado)`],
-    ['Plataforma',        osData.platform],
-  ].map(([k,v]) => `<tr><td style="padding:6px 12px;font-size:12px;color:#64748b;width:42%;border-bottom:1px solid #f1f5f9;">${k}</td><td style="padding:6px 12px;font-size:12px;color:#1e293b;font-weight:600;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('');
+  const kpi = (valor, label, fg, bg) =>
+    `<td width="33%" valign="top" style="padding:5px;">
+      <div style="background:${bg};border-radius:14px;padding:16px 8px;text-align:center;">
+        <div style="font-size:28px;font-weight:800;color:${fg};line-height:1;">${valor}</div>
+        <div style="margin-top:6px;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.03em;">${label}</div>
+      </div>
+    </td>`;
 
-  // ── DB block ──────────────────────────────────────────────────────────────
-  const dbIcon  = db.latency < 300 ? '✅' : db.latency < 600 ? '🟡' : '🔴';
-  const dbRows = db.tables.map(t =>
-    `<tr style="border-bottom:1px solid #f1f5f9;">
-      <td style="padding:5px 12px;font-size:11px;font-family:monospace;color:#1e293b;">${t.name || '—'}</td>
-      <td style="padding:5px 8px;font-size:11px;color:#334155;text-align:right;">${(t.filas || 0).toLocaleString('es-CO')} filas</td>
-      <td style="padding:5px 8px;font-size:11px;color:#64748b;text-align:right;">${t.mb || 0} MB</td>
-    </tr>`).join('');
+  const kpiGrid = `
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+      <tr>
+        ${kpi(vencT, 'Tareas vencidas', vencT > 0 ? '#b91c1c' : '#15803d', vencT > 0 ? '#fee2e2' : '#dcfce7')}
+        ${kpi(pct(complT, totalT) + '%', 'Completadas', '#1d4ed8', '#dbeafe')}
+        ${kpi(`${activosTot}/${usersTot}`, 'Usuarios activos', '#0f766e', '#ccfbf1')}
+      </tr>
+      <tr>
+        ${kpi(errors24h.length, 'Errores 24h', errors24h.length > 0 ? '#b45309' : '#15803d', errors24h.length > 0 ? '#fef3c7' : '#dcfce7')}
+        ${kpi(noLeidas, 'Notif. sin leer', noLeidas > 100 ? '#b45309' : '#475569', noLeidas > 100 ? '#fef3c7' : '#f1f5f9')}
+        ${kpi(db.latency + 'ms', 'Latencia DB', st(dbIcon).fg, st(dbIcon).bg)}
+      </tr>
+    </table>`;
 
-  // ── Activity block ─────────────────────────────────────────────────────────
-  const actRows = activity.actions.map(a =>
-    `<span style="display:inline-block;margin:2px;background:#f1f5f9;border-radius:6px;padding:3px 8px;font-size:11px;color:#334155;">${a.accion} ×${a.cnt}</span>`).join('');
-  const modRows = activity.modules.map(m =>
-    `<span style="display:inline-block;margin:2px;background:#eff6ff;border-radius:6px;padding:3px 8px;font-size:11px;color:#1d4ed8;">${m.modulo} ×${m.cnt}</span>`).join('');
+  // ── Secciones ────────────────────────────────────────────────────────────────
+  const sec = (titulo, contenido) => `
+  <tr><td style="padding:20px 26px 0;">
+    <p style="margin:0 0 10px;font-size:12px;font-weight:800;color:#1a365d;letter-spacing:.03em;text-transform:uppercase;">${titulo}</p>
+    ${contenido}
+  </td></tr>`;
 
-  // ── Notif tipos ────────────────────────────────────────────────────────────
-  const notifTiposHtml = notifs.tipos.map(t =>
-    `<span style="display:inline-block;margin:2px;background:#f8fafc;border-radius:6px;padding:3px 8px;font-size:11px;color:#334155;">${t.tipo} ×${t.cnt}</span>`).join('');
+  const card = (inner) => `<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">${inner}</div>`;
 
-  // ── Users by role ──────────────────────────────────────────────────────────
-  const rolesHtml = usersByRole.map(u =>
-    `<tr style="border-bottom:1px solid #f1f5f9;">
-      <td style="padding:5px 12px;font-size:12px;font-weight:600;color:#334155;">${u.role}</td>
-      <td style="padding:5px 8px;font-size:12px;color:#64748b;text-align:center;">${u.activos}</td>
-      <td style="padding:5px 8px;font-size:12px;color:#64748b;text-align:center;">${u.total}</td>
-    </tr>`).join('');
+  const kvRows = (pairs) => pairs.map(([k, v], i) =>
+    `<tr><td style="padding:9px 14px;font-size:12px;color:#64748b;width:46%;${i ? 'border-top:1px solid #f1f5f9;' : ''}">${k}</td>
+      <td style="padding:9px 14px;font-size:12px;color:#1e293b;font-weight:600;${i ? 'border-top:1px solid #f1f5f9;' : ''}">${v}</td></tr>`).join('');
 
-  // ── Inactivos ──────────────────────────────────────────────────────────────
-  const inactivosHtml = inactivos.length
-    ? inactivos.map(u => `<li style="font-size:12px;color:#dc2626;margin:2px 0;">${u.nombre_complete} — <code style="font-size:11px;">${u.email}</code></li>`).join('')
-    : '<li style="font-size:12px;color:#16a34a;">Ninguno</li>';
+  // Tareas: barra desglose + atrasados
+  const tareasSec = card(`
+    <div style="padding:14px 16px;">
+      <p style="margin:0 0 10px;font-size:13px;color:#334155;">
+        <strong style="color:#1e293b;">${totalT}</strong> tareas ·
+        <span style="color:#15803d;font-weight:700;">${complT} completadas</span> ·
+        <span style="color:#1d4ed8;font-weight:700;">${Number(tareas.en_proceso) || 0} en proceso</span> ·
+        <span style="color:#64748b;font-weight:700;">${Number(tareas.pendientes) || 0} pendientes</span> ·
+        <span style="color:${vencT > 0 ? '#b91c1c' : '#15803d'};font-weight:700;">${vencT} vencidas</span>
+      </p>
+      ${vencidasPorResp.length ? `
+      <p style="margin:6px 0 6px;font-size:11px;font-weight:700;color:#b91c1c;text-transform:uppercase;letter-spacing:.03em;">Con tareas vencidas</p>
+      ${vencidasPorResp.map(r => `<span style="display:inline-block;margin:2px 4px 2px 0;background:#fef2f2;border:1px solid #fecaca;border-radius:999px;padding:3px 10px;font-size:11px;color:#991b1b;">${esc(r.nombre || 'Sin nombre')} · <strong>${r.c}</strong></span>`).join('')}
+      ` : '<p style="margin:0;font-size:12px;color:#15803d;">✓ Nadie con tareas vencidas.</p>'}
+    </div>`);
 
-  // ── Password resets ────────────────────────────────────────────────────────
-  const resetsHtml = resets24h.length
-    ? resets24h.map(r =>
-        `<tr style="border-bottom:1px solid #f1f5f9;">
-          <td style="padding:5px 12px;font-size:11px;color:#334155;">${r.email}</td>
-          <td style="padding:5px 8px;font-size:11px;color:#64748b;text-align:center;">${r.used ? '✅ usado' : '⏳ pendiente'}</td>
-          <td style="padding:5px 8px;font-size:11px;color:#94a3b8;">${new Date(r.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</td>
-        </tr>`).join('')
-    : `<tr><td colspan="3" style="padding:8px 12px;font-size:12px;color:#94a3b8;">Ninguna en las últimas 24h</td></tr>`;
+  // Usuarios
+  const rolesRows = usersByRole.map((u, i) =>
+    `<tr><td style="padding:8px 14px;font-size:12px;font-weight:600;color:#334155;text-transform:capitalize;${i ? 'border-top:1px solid #f1f5f9;' : ''}">${esc(u.role)}</td>
+      <td style="padding:8px 14px;font-size:12px;color:#15803d;text-align:center;font-weight:700;${i ? 'border-top:1px solid #f1f5f9;' : ''}">${u.activos}</td>
+      <td style="padding:8px 14px;font-size:12px;color:#64748b;text-align:center;${i ? 'border-top:1px solid #f1f5f9;' : ''}">${u.total}</td></tr>`).join('');
+  const usuariosSec = card(`
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+      <tr style="background:#f8fafc;"><th style="padding:7px 14px;text-align:left;font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;">Rol</th>
+        <th style="padding:7px 14px;text-align:center;font-size:10px;color:#94a3b8;text-transform:uppercase;">Activos</th>
+        <th style="padding:7px 14px;text-align:center;font-size:10px;color:#94a3b8;text-transform:uppercase;">Total</th></tr>
+      ${rolesRows}
+    </table>`) + (inactivos.length ? `
+    <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:10px 14px;margin-top:8px;">
+      <p style="margin:0 0 4px;font-size:11px;color:#9a3412;font-weight:700;">⚠ Cuentas inactivas (${inactivos.length})</p>
+      <p style="margin:0;font-size:11px;color:#7c2d12;line-height:1.5;">${inactivos.map(u => esc(u.nombre_complete)).join(' · ')}</p>
+    </div>` : '');
 
-  // ── Errores ────────────────────────────────────────────────────────────────
+  // Actividad
+  const chip = (txt, bg, fg) => `<span style="display:inline-block;margin:2px 3px 2px 0;background:${bg};border-radius:6px;padding:3px 9px;font-size:11px;color:${fg};">${txt}</span>`;
+  const actividadSec = card(`
+    <div style="padding:14px 16px;">
+      <p style="margin:0 0 10px;font-size:13px;color:#334155;">
+        <strong>${activity.meta.total_requests}</strong> acciones ·
+        <strong>${activity.meta.unique_users}</strong> usuarios ·
+        <strong>${activity.meta.unique_ips}</strong> IPs
+      </p>
+      <div>${activity.modules.map(m => chip(`${esc(m.modulo)} ×${m.cnt}`, '#eff6ff', '#1d4ed8')).join('') || '<span style="font-size:11px;color:#94a3b8;">Sin actividad</span>'}</div>
+    </div>`);
+
+  // Salud del servidor (runtime + OS)
+  const saludSec = card(`<table width="100%" cellpadding="0" cellspacing="0" role="presentation">${kvRows([
+    ['Uptime del proceso', uptimeStr(runtime.uptime)],
+    ['Node.js', runtime.nodeVersion + ' · ' + osData.platform],
+    ['Memoria heap', `${mbStr(runtime.heapUsed)} / ${mbStr(runtime.heapTotal)} (${heapPct}%)`],
+    ['RAM del servidor', `${(osData.freeMem/1073741824).toFixed(1)} GB libres de ${(osData.totalMem/1073741824).toFixed(0)} GB (${memUsedPct.toFixed(0)}% usada)`],
+    ['CPU (load / core)', `${perCore.toFixed(2)} · ${osData.cpuCount} cores`],
+    ['Latencia a la BD', `${db.latency} ms ${db.latency >= 600 ? '(túnel SSH lento)' : '(normal)'}`],
+  ])}</table>`);
+
+  // Base de datos
+  const dbRows = db.tables.slice(0, 8).map((t, i) =>
+    `<tr><td style="padding:6px 14px;font-size:11px;color:#334155;${i ? 'border-top:1px solid #f1f5f9;' : ''}">${esc(t.name || '—')}</td>
+      <td style="padding:6px 14px;font-size:11px;color:#64748b;text-align:right;${i ? 'border-top:1px solid #f1f5f9;' : ''}">${(t.filas || 0).toLocaleString('es-CO')}</td>
+      <td style="padding:6px 14px;font-size:11px;color:#94a3b8;text-align:right;${i ? 'border-top:1px solid #f1f5f9;' : ''}">${t.mb || 0} MB</td></tr>`).join('');
+  const dbSec = card(`
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+      <tr style="background:#f8fafc;"><th style="padding:7px 14px;text-align:left;font-size:10px;color:#94a3b8;text-transform:uppercase;">Tabla</th>
+        <th style="padding:7px 14px;text-align:right;font-size:10px;color:#94a3b8;text-transform:uppercase;">Filas</th>
+        <th style="padding:7px 14px;text-align:right;font-size:10px;color:#94a3b8;text-transform:uppercase;">Tamaño</th></tr>
+      ${dbRows}
+    </table>`);
+
+  // Email + Notificaciones
+  const emailNotifSec = card(`<table width="100%" cellpadding="0" cellspacing="0" role="presentation">${kvRows([
+    ['Correos enviados (24h / 7d)', `${email.sent24h} / ${email.sent7d}`],
+    ['Correos atascados', `<span style="color:${Number(email.failed) > 0 ? '#b91c1c' : '#15803d'};font-weight:700;">${email.failed}</span>`],
+    ['SMTP', smtp.host ? `✅ ${esc(smtp.host)}` : '🔴 no configurado'],
+    ['Notificaciones (sin leer / total)', `${notifs.no_leidas} / ${notifs.total}`],
+    ['Notas de chat (hoy / total)', `${notas.last24h} / ${notas.total}`],
+  ])}</table>`);
+
+  // Alertas: errores + resets
   const erroresHtml = errors24h.length
-    ? errors24h.map(e =>
-        `<tr style="border-bottom:1px solid #fecaca;">
-          <td style="padding:5px 12px;font-size:11px;color:#991b1b;">${e.modulo}</td>
-          <td style="padding:5px 8px;font-size:11px;color:#334155;word-break:break-all;">${(e.detalle||'').slice(0,80)}</td>
-          <td style="padding:5px 8px;font-size:11px;color:#94a3b8;white-space:nowrap;">${new Date(e.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</td>
-        </tr>`).join('')
-    : `<tr><td colspan="3" style="padding:8px 12px;font-size:12px;color:#16a34a;">✅ Sin errores registrados</td></tr>`;
+    ? errors24h.map((e, i) => `<tr>
+        <td style="padding:7px 14px;font-size:11px;color:#991b1b;font-weight:600;${i ? 'border-top:1px solid #fee2e2;' : ''}">${esc(e.modulo)}</td>
+        <td style="padding:7px 14px;font-size:11px;color:#475569;${i ? 'border-top:1px solid #fee2e2;' : ''}">${esc((e.detalle || '').slice(0, 70))}</td>
+        <td style="padding:7px 14px;font-size:11px;color:#94a3b8;white-space:nowrap;${i ? 'border-top:1px solid #fee2e2;' : ''}">${new Date(e.created_at).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</td></tr>`).join('')
+    : `<tr><td style="padding:10px 14px;font-size:12px;color:#15803d;">✓ Sin errores registrados en 24h</td></tr>`;
+  const resetsLine = resets24h.length
+    ? resets24h.map(r => `${esc(r.email)} (${r.used ? '✓ usado' : '⏳ pendiente'})`).join(' · ')
+    : 'Ninguno en 24h';
+  const alertasSec = card(`
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation">${erroresHtml}</table>
+    <div style="padding:9px 14px;border-top:1px solid #f1f5f9;">
+      <span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em;">Resets de contraseña 24h:</span>
+      <span style="font-size:11px;color:#475569;"> ${resetsLine}</span>
+    </div>`);
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://appflow2026.vercel.app';
+  // Jobs
+  const jobs = [
+    ['Recordatorio diario', '8:00 AM', 'Tareas vencidas/próximas → responsables'],
+    ['Diagnóstico técnico', '8:00 AM', 'Este informe → superadmin'],
+    ['Limpieza semanal', 'Dom 3:00 AM', 'Purga notificaciones/emails obsoletos'],
+  ];
+  const jobsSec = card(`<table width="100%" cellpadding="0" cellspacing="0" role="presentation">${jobs.map(([n, c, desc], i) =>
+    `<tr><td style="padding:8px 14px;font-size:12px;color:#1e293b;font-weight:600;${i ? 'border-top:1px solid #f1f5f9;' : ''}">✅ ${n}</td>
+      <td style="padding:8px 14px;font-size:11px;color:#1d4ed8;white-space:nowrap;${i ? 'border-top:1px solid #f1f5f9;' : ''}">${c}</td>
+      <td style="padding:8px 14px;font-size:11px;color:#94a3b8;${i ? 'border-top:1px solid #f1f5f9;' : ''}">${desc}</td></tr>`).join('')}</table>`);
 
   return `<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;font-family:'Courier New',Courier,monospace;background:#0f172a;">
-<table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 12px;">
+<body style="margin:0;padding:0;background:#eef2f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#eef2f6;padding:24px 12px;">
 <tr><td align="center">
-<table width="700" cellpadding="0" cellspacing="0" style="background:#1e293b;border-radius:12px;overflow:hidden;border:1px solid #334155;">
+<table width="600" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,.08);">
 
   <!-- HEADER -->
   <tr>
-    <td style="background:#0f172a;padding:20px 28px;border-bottom:1px solid #334155;">
-      <table width="100%" cellpadding="0" cellspacing="0">
-        <tr>
-          <td>
-            <p style="margin:0;font-size:10px;color:#64748b;font-family:monospace;letter-spacing:.1em;">ALZAK FLOW · SISTEMA DE GESTIÓN</p>
-            <h1 style="margin:4px 0 0;font-size:18px;color:#f8fafc;font-family:monospace;font-weight:700;">📊 Diagnóstico Técnico Diario</h1>
-          </td>
-          <td style="text-align:right;vertical-align:top;">
-            <p style="margin:0;font-size:11px;color:#64748b;font-family:monospace;">${hoy}</p>
-            <p style="margin:2px 0 0;font-size:11px;color:#94a3b8;font-family:monospace;">Generado: ${hora} COT</p>
-            <span style="display:inline-block;margin-top:6px;background:${overallCrit?'#7f1d1d':overallOk?'#14532d':'#713f12'};color:${overallCrit?'#fca5a5':overallOk?'#86efac':'#fde047'};border:1px solid ${overallCrit?'#991b1b':overallOk?'#16a34a':'#a16207'};font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;font-family:monospace;letter-spacing:.05em;">${overallCrit?'● CRÍTICO':overallOk?'● ALL SYSTEMS OK':'● REVISAR'}</span>
-          </td>
-        </tr>
-      </table>
+    <td style="background:#1a365d;padding:24px 26px;">
+      <p style="margin:0;font-size:11px;color:#93c5fd;letter-spacing:.08em;text-transform:uppercase;">ALZAK Flow · Sistema de Gestión</p>
+      <h1 style="margin:6px 0 0;font-size:21px;color:#ffffff;font-weight:800;">📊 Diagnóstico Técnico Diario</h1>
+      <p style="margin:10px 0 0;font-size:12px;color:#cbd5e1;text-transform:capitalize;">${hoy} · ${hora} COT</p>
+      <span style="display:inline-block;margin-top:12px;background:${estado.bg};color:${estado.fg};font-size:12px;font-weight:800;padding:6px 14px;border-radius:999px;letter-spacing:.02em;">● ${estado.txt}</span>
     </td>
   </tr>
 
   <!-- SEMÁFOROS -->
-  <tr>
-    <td style="padding:16px 28px;border-bottom:1px solid #334155;background:#0f172a;">
-      ${semChips}
-    </td>
-  </tr>
+  <tr><td style="padding:18px 26px 4px;">${semChips}</td></tr>
 
-  <!-- RUNTIME NODE.JS -->
-  <tr><td style="padding:16px 28px 0;">
-    <p style="margin:0 0 8px;font-size:10px;font-weight:700;color:#60a5fa;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;">▸ Runtime Node.js</p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:8px;overflow:hidden;border:1px solid #334155;">
-      <tbody>${runtimeRows}</tbody>
-    </table>
+  <!-- KPIs -->
+  <tr><td style="padding:12px 22px 4px;">${kpiGrid}</td></tr>
+
+  ${sec('📋 Tareas', tareasSec)}
+  ${sec('👥 Usuarios', usuariosSec)}
+  ${sec('⚡ Actividad · últimas 24 h', actividadSec)}
+  ${sec('🖥️ Salud del servidor', saludSec)}
+  ${sec('🗄️ Base de datos', dbSec)}
+  ${sec('✉️ Correo y notificaciones', emailNotifSec)}
+  ${sec('🚨 Alertas', alertasSec)}
+  ${sec('⏱️ Jobs programados', jobsSec)}
+
+  <!-- CTA -->
+  <tr><td style="padding:22px 26px 8px;" align="center">
+    <a href="${appUrl}" style="display:inline-block;background:#1a365d;color:#ffffff;font-size:13px;font-weight:700;padding:12px 28px;border-radius:10px;text-decoration:none;">Abrir ALZAK Flow →</a>
   </td></tr>
 
-  <!-- OS -->
-  <tr><td style="padding:16px 28px 0;">
-    <p style="margin:0 0 8px;font-size:10px;font-weight:700;color:#60a5fa;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;">▸ Sistema Operativo</p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:8px;overflow:hidden;border:1px solid #334155;">
-      <tbody>${osRows}</tbody>
-    </table>
+  <!-- FOOTER -->
+  <tr><td style="background:#f8fafc;padding:16px 26px;border-top:1px solid #e2e8f0;">
+    <p style="margin:0;font-size:11px;color:#94a3b8;text-align:center;line-height:1.5;">
+      Informe automático · 8:00 AM (hora Colombia) · para el superadministrador<br>
+      Alzak Foundation · Sistema de Gestión de Proyectos Clínicos
+    </p>
   </td></tr>
-
-  <!-- DB -->
-  <tr><td style="padding:16px 28px 0;">
-    <p style="margin:0 0 8px;font-size:10px;font-weight:700;color:#60a5fa;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;">▸ Base de Datos — MySQL vía SSH Tunnel (DigitalOcean)</p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:8px;overflow:hidden;border:1px solid #334155;">
-      <thead>
-        <tr style="background:#1e293b;">
-          <th style="padding:6px 12px;text-align:left;font-size:10px;color:#64748b;font-family:monospace;letter-spacing:.05em;">TABLA</th>
-          <th style="padding:6px 8px;text-align:right;font-size:10px;color:#64748b;font-family:monospace;letter-spacing:.05em;">FILAS</th>
-          <th style="padding:6px 8px;text-align:right;font-size:10px;color:#64748b;font-family:monospace;letter-spacing:.05em;">TAMAÑO</th>
-        </tr>
-      </thead>
-      <tbody>${dbRows}</tbody>
-      <tfoot>
-        <tr><td colspan="3" style="padding:8px 12px;font-size:11px;color:${dbIcon==='✅'?'#86efac':dbIcon==='🟡'?'#fde047':'#fca5a5'};font-family:monospace;">
-          ${dbIcon} Latencia conexión: <strong>${db.latency}ms</strong>${db.latency>300?' — túnel SSH al droplet puede tener latencia variable':''}
-        </td></tr>
-      </tfoot>
-    </table>
-  </td></tr>
-
-  <!-- ACTIVIDAD 24H -->
-  <tr><td style="padding:16px 28px 0;">
-    <p style="margin:0 0 8px;font-size:10px;font-weight:700;color:#60a5fa;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;">▸ Actividad API — Últimas 24 horas</p>
-    <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px 16px;">
-      <p style="margin:0 0 8px;font-size:12px;color:#cbd5e1;font-family:monospace;">
-        Requests: <strong style="color:#f8fafc;">${activity.meta.total_requests}</strong> &nbsp;|&nbsp;
-        Usuarios únicos: <strong style="color:#f8fafc;">${activity.meta.unique_users}</strong> &nbsp;|&nbsp;
-        IPs distintas: <strong style="color:#f8fafc;">${activity.meta.unique_ips}</strong>
-      </p>
-      <p style="margin:0 0 6px;font-size:10px;color:#64748b;font-family:monospace;text-transform:uppercase;letter-spacing:.05em;">Acciones</p>
-      <div style="margin:0 0 10px;">${actRows || '<span style="font-size:11px;color:#64748b;">Sin actividad</span>'}</div>
-      <p style="margin:0 0 6px;font-size:10px;color:#64748b;font-family:monospace;text-transform:uppercase;letter-spacing:.05em;">Módulos</p>
-      <div>${modRows || '<span style="font-size:11px;color:#64748b;">Sin actividad</span>'}</div>
-    </div>
-  </td></tr>
-
-  <!-- EMAIL SYSTEM -->
-  <tr><td style="padding:16px 28px 0;">
-    <p style="margin:0 0 8px;font-size:10px;font-weight:700;color:#60a5fa;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;">▸ Sistema de Email (SMTP)</p>
-    <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px 16px;">
-      <p style="margin:0 0 6px;font-size:12px;color:#cbd5e1;font-family:monospace;">
-        ${smtp.host ? `✅ SMTP configurado: <strong style="color:#f8fafc;">${smtp.host}</strong> / <strong style="color:#86efac;">${smtp.user}</strong>` : '🔴 SMTP no configurado'}
-      </p>
-      <p style="margin:0;font-size:12px;color:#cbd5e1;font-family:monospace;">
-        Enviados 24h: <strong style="color:#f8fafc;">${email.sent24h}</strong> &nbsp;|&nbsp;
-        Enviados 7d: <strong style="color:#f8fafc;">${email.sent7d}</strong> &nbsp;|&nbsp;
-        Total histórico: <strong style="color:#f8fafc;">${email.totalSent}</strong> &nbsp;|&nbsp;
-        Atascados: <strong style="color:${email.failed>0?'#fca5a5':'#86efac'};">${email.failed}</strong>
-      </p>
-    </div>
-  </td></tr>
-
-  <!-- NOTIFICACIONES -->
-  <tr><td style="padding:16px 28px 0;">
-    <p style="margin:0 0 8px;font-size:10px;font-weight:700;color:#60a5fa;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;">▸ Notificaciones In-App</p>
-    <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px 16px;">
-      <p style="margin:0 0 8px;font-size:12px;color:#cbd5e1;font-family:monospace;">
-        Total en DB: <strong style="color:#f8fafc;">${notifs.total}</strong> &nbsp;|&nbsp;
-        Leídas: <strong style="color:#86efac;">${notifs.leidas}</strong> &nbsp;|&nbsp;
-        Sin leer: <strong style="color:${Number(notifs.no_leidas)>50?'#fca5a5':'#fde047'};">${notifs.no_leidas}</strong> &nbsp;|&nbsp;
-        Nuevas 24h: <strong style="color:#f8fafc;">${notifs.nuevas_24h}</strong>
-      </p>
-      <p style="margin:0 0 6px;font-size:10px;color:#64748b;font-family:monospace;letter-spacing:.05em;">Por tipo:</p>
-      <div>${notifTiposHtml}</div>
-    </div>
-  </td></tr>
-
-  <!-- USUARIOS -->
-  <tr><td style="padding:16px 28px 0;">
-    <p style="margin:0 0 8px;font-size:10px;font-weight:700;color:#60a5fa;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;">▸ Cuentas de Usuario</p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:8px;overflow:hidden;border:1px solid #334155;">
-      <thead>
-        <tr style="background:#1e293b;">
-          <th style="padding:6px 12px;text-align:left;font-size:10px;color:#64748b;font-family:monospace;">ROL</th>
-          <th style="padding:6px 8px;text-align:center;font-size:10px;color:#64748b;font-family:monospace;">ACTIVOS</th>
-          <th style="padding:6px 8px;text-align:center;font-size:10px;color:#64748b;font-family:monospace;">TOTAL</th>
-        </tr>
-      </thead>
-      <tbody>${rolesHtml}</tbody>
-    </table>
-    ${inactivos.length ? `
-    <div style="background:#1a0a0a;border:1px solid #7f1d1d;border-radius:6px;padding:8px 14px;margin-top:8px;">
-      <p style="margin:0 0 4px;font-size:10px;color:#f87171;font-family:monospace;font-weight:700;">⚠ CUENTAS INACTIVAS (${inactivos.length})</p>
-      <ul style="margin:0;padding-left:16px;">${inactivosHtml}</ul>
-    </div>` : ''}
-  </td></tr>
-
-  <!-- PASSWORD RESETS 24H -->
-  <tr><td style="padding:16px 28px 0;">
-    <p style="margin:0 0 8px;font-size:10px;font-weight:700;color:#60a5fa;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;">▸ Resets de Contraseña — Últimas 24h</p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:8px;overflow:hidden;border:1px solid #334155;">
-      <thead><tr style="background:#1e293b;">
-        <th style="padding:6px 12px;text-align:left;font-size:10px;color:#64748b;font-family:monospace;">EMAIL</th>
-        <th style="padding:6px 8px;text-align:center;font-size:10px;color:#64748b;font-family:monospace;">ESTADO</th>
-        <th style="padding:6px 8px;text-align:left;font-size:10px;color:#64748b;font-family:monospace;">HORA</th>
-      </tr></thead>
-      <tbody>${resetsHtml}</tbody>
-    </table>
-  </td></tr>
-
-  <!-- JOBS PROGRAMADOS -->
-  <tr><td style="padding:16px 28px 0;">
-    <p style="margin:0 0 8px;font-size:10px;font-weight:700;color:#60a5fa;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;">▸ Jobs Programados (node-cron)</p>
-    <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px 16px;">
-      ${[
-        ['scheduleDailyReminder',  '0 8 * * *',   'Recordatorios de tareas vencidas → responsables'],
-        ['scheduleSystemStatus',   '0 8 * * *',   'Este informe → superadmin'],
-        ['scheduleCleanup',        '0 3 * * 0',   'Limpieza notificaciones/emails obsoletos (domingo)'],
-      ].map(([name, cron, desc]) =>
-        `<p style="margin:0 0 4px;font-size:11px;color:#cbd5e1;font-family:monospace;">
-          ✅ <strong style="color:#86efac;">${name}</strong>
-          <code style="background:#1e293b;padding:1px 6px;border-radius:4px;font-size:10px;color:#fde047;">${cron}</code>
-          <span style="color:#64748b;"> — ${desc}</span>
-        </p>`).join('')}
-    </div>
-  </td></tr>
-
-  <!-- ERRORES 24H -->
-  <tr><td style="padding:16px 28px 0;">
-    <p style="margin:0 0 8px;font-size:10px;font-weight:700;color:#60a5fa;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;">▸ Errores en Logs — Últimas 24h</p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;border-radius:8px;overflow:hidden;border:1px solid ${errors24h.length?'#7f1d1d':'#334155'};">
-      <thead><tr style="background:#1e293b;">
-        <th style="padding:6px 12px;text-align:left;font-size:10px;color:#64748b;font-family:monospace;">MÓDULO</th>
-        <th style="padding:6px 8px;text-align:left;font-size:10px;color:#64748b;font-family:monospace;">DETALLE</th>
-        <th style="padding:6px 8px;text-align:left;font-size:10px;color:#64748b;font-family:monospace;">HORA</th>
-      </tr></thead>
-      <tbody>${erroresHtml}</tbody>
-    </table>
-  </td></tr>
-
-  <!-- TAREAS KPI RÁPIDO -->
-  <tr><td style="padding:16px 28px 0;">
-    <p style="margin:0 0 8px;font-size:10px;font-weight:700;color:#60a5fa;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;">▸ Estado de Tareas (referencia rápida)</p>
-    <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px 16px;">
-      <p style="margin:0;font-size:12px;color:#cbd5e1;font-family:monospace;">
-        Total: <strong style="color:#f8fafc;">${tareas.total}</strong> &nbsp;|&nbsp;
-        Completadas: <strong style="color:#86efac;">${tareas.completadas}</strong> (${pct(Number(tareas.completadas), Number(tareas.total))}%) &nbsp;|&nbsp;
-        Vencidas sin cerrar: <strong style="color:${Number(tareas.vencidas)>0?'#fca5a5':'#86efac'};">${tareas.vencidas}</strong> &nbsp;|&nbsp;
-        Notas chat: <strong style="color:#f8fafc;">${notas.total}</strong> total · <strong style="color:#f8fafc;">${notas.last24h}</strong> hoy
-      </p>
-    </div>
-  </td></tr>
-
-  <!-- CTA + FOOTER -->
-  <tr><td style="padding:20px 28px 24px;">
-    <a href="${appUrl}" style="display:inline-block;background:#1d4ed8;color:#fff;font-size:12px;font-weight:700;padding:10px 22px;border-radius:6px;text-decoration:none;font-family:monospace;margin-right:8px;">→ Abrir sistema</a>
-    <a href="${appUrl}/logs" style="display:inline-block;background:#1e293b;color:#94a3b8;border:1px solid #334155;font-size:12px;font-weight:700;padding:10px 18px;border-radius:6px;text-decoration:none;font-family:monospace;">→ Ver logs</a>
-  </td></tr>
-  <tr>
-    <td style="background:#0f172a;padding:12px 28px;border-top:1px solid #334155;">
-      <p style="margin:0;font-size:10px;color:#475569;text-align:center;font-family:monospace;">
-        ALZAK Flow · Diagnóstico técnico automático · 8:00 AM Colombia · asistenteti@alzakfoundation.org
-      </p>
-    </td>
-  </tr>
 
 </table>
 </td></tr>
@@ -549,9 +466,10 @@ async function sendSystemStatus() {
   const data = await fetchTechData();
 
   const vencidas = Number(data.tareas.vencidas) || 0;
+  const fecha    = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
   const subject  = vencidas > 0
-    ? `⚠️ ALZAK Flow — Diagnóstico Técnico · ${vencidas} tareas vencidas · ${new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'short'})}`
-    : `✅ ALZAK Flow — Diagnóstico Técnico · Sistemas OK · ${new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'short'})}`;
+    ? `⚠️ ALZAK Flow — Diagnóstico Técnico · ${vencidas} tareas vencidas · ${fecha}`
+    : `✅ ALZAK Flow — Diagnóstico Técnico · Sistemas OK · ${fecha}`;
 
   const html      = buildTechHtml(data);
   const transport = buildTransport();

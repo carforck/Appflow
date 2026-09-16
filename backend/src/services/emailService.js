@@ -231,8 +231,20 @@ async function sendConsolidatedEmails() {
   const transport = buildTransport();
   const from      = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@alzakfoundation.org';
 
+  // No enviar a usuarios inactivos/eliminados: se omiten y se marcan para no reencolar.
+  const [activosRows] = await pool.query('SELECT email FROM users WHERE activo = 1');
+  const activos = new Set(activosRows.map((r) => r.email));
+
   // 3. Enviar un correo por destinatario
   for (const [correo, { nombre, ids, tareas }] of byRecipient) {
+    if (!activos.has(correo)) {
+      console.log(`⏭️  Omitido correo a ${correo} — usuario inactivo`);
+      await pool.query(
+        `UPDATE pending_emails SET enviado = 1, sent_at = NOW() WHERE id IN (${ids.map(() => '?').join(',')})`,
+        ids,
+      );
+      continue;
+    }
     const subject = tareas.length === 1
       ? `ALZAK Flow — Nueva tarea asignada: ${tareas[0].tarea_descripcion.slice(0, 60)}`
       : `ALZAK Flow — ${tareas.length} nuevas tareas asignadas`;

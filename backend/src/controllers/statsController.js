@@ -22,6 +22,9 @@ async function getDashboardStats(req, res) {
     // ── Construir filtros WHERE dinámicos ─────────────────────────────────────
     // Siempre excluir 'Pendiente Revisión' — no son tareas activas
     const conditions = [`t.estado_tarea != 'Pendiente Revisión'`];
+    // Excluir tareas de usuarios inactivos/eliminados: no operan → no deben figurar
+    // en reportes ni métricas. Se conservan las tareas sin responsable (NULL).
+    conditions.push("(t.responsable_correo IS NULL OR t.responsable_correo IN (SELECT email FROM users WHERE activo = 1))");
     const params     = [];
 
     // Para rol 'user': filtrar todas las métricas por su correo — nunca 403

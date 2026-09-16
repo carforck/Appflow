@@ -184,6 +184,7 @@ async function sendDailyReminders() {
       AND t.fecha_entrega  IS NOT NULL
       AND t.responsable_correo IS NOT NULL
       AND t.responsable_correo != ''
+      AND t.responsable_correo IN (SELECT email FROM users WHERE activo = 1)
       AND t.fecha_entrega  <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
     ORDER BY t.responsable_correo ASC, t.fecha_entrega ASC
   `);

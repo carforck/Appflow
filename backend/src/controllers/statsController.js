@@ -81,8 +81,7 @@ async function getDashboardStats(req, res) {
         SUM(t.estado_tarea = 'Completada')                 AS completada
        FROM tasks t ${WHERE}
        GROUP BY t.responsable_correo
-       ORDER BY total DESC
-       LIMIT 10`,
+       ORDER BY total DESC`,
       params
     );
 
